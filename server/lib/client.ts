@@ -146,6 +146,9 @@ export type DesktopBridge = {
   notify(title: string, body: string): void;
   setUnread(count: number): void;
   version: string;
+  /** Older desktop builds don't have these. */
+  checkForUpdate?(): Promise<{ current: string; latest?: string; newer?: boolean; error?: string }>;
+  openUpdate?(): void;
 };
 export function desktop(): DesktopBridge | null {
   return (globalThis as unknown as { jaceDesktop?: DesktopBridge }).jaceDesktop ?? null;

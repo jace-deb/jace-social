@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import {
-  api, desktopReady, getToken, inDesktop, since, statusLabel, type Me, type Person, type ServerDetail, type Status,
+  api, desktop, desktopReady, getToken, inDesktop, since, statusLabel, type Me, type Person, type ServerDetail, type Status,
 } from "@/lib/client";
 import { ActivityCard, Avatar, Modal, PersonRow } from "./ui";
 
@@ -129,6 +129,7 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
               {t === "profile" ? "My profile" : t === "status" ? "Status" : "Linked accounts"}</button>
           ))}
           <button className="side-item" style={{ color: "var(--red)" }} onClick={onSignOut}>Sign out</button>
+          <DesktopVersion />
         </nav>
         <div className="modal-body">
           {tab === "profile" && <>
@@ -188,6 +189,28 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** The desktop app's version, with a one-click update check. */
+function DesktopVersion() {
+  const [version, setVersion] = useState<string | null>(null);
+  const [state, setState] = useState<{ busy?: boolean; text?: string; latest?: string }>({});
+  useEffect(() => { void desktopReady().then((d) => { if (d?.checkForUpdate) setVersion(d.version); }); }, []);
+  if (!version) return null;
+  async function check() {
+    setState({ busy: true });
+    const r = await (await desktopReady())!.checkForUpdate!();
+    setState(r.error ? { text: r.error } : r.newer ? { latest: r.latest } : { text: "You're up to date" });
+  }
+  return (
+    <div className="muted small" style={{ padding: "12px 8px 0", display: "grid", gap: 6 }}>
+      <span>Desktop app {version}</span>
+      {state.latest
+        ? <button className="btn primary small" onClick={() => desktop()?.openUpdate?.()}>Download {state.latest}</button>
+        : <button className="btn small" disabled={state.busy} onClick={check}>{state.busy ? "Checking…" : "Check for updates"}</button>}
+      {state.text && <span>{state.text}</span>}
+    </div>
   );
 }
 

@@ -89,7 +89,8 @@ def build_macos():
         plist = plistlib.load(f)
     plist.update({"CFBundleDisplayName": "Jace Social", "CFBundleShortVersionString": APP_VERSION,
                   "CFBundleVersion": APP_VERSION, "LSApplicationCategoryType": "public.app-category.social-networking",
-                  "NSHighResolutionCapable": True, "LSMinimumSystemVersion": ".".join(map(str, need))})
+                  "NSHighResolutionCapable": True, "LSMinimumSystemVersion": ".".join(map(str, need)),
+                  "NSMicrophoneUsageDescription": "Jace Social uses the microphone for voice calls with your friends."})
     with open(info, "wb") as f:
         plistlib.dump(plist, f)
     run(["codesign", "--force", "--deep", "--sign", "-", app])        # ad-hoc: required on Apple Silicon

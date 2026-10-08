@@ -41,7 +41,7 @@ If both accounts already had friends or chats, linking merges them into one.
 - **Status:** Online, Idle, Do Not Disturb or Invisible, plus a custom status with an emoji.
 - **Rich presence:** the Minecraft version and loader, the server or world, the modpack, and how long you've been playing. It's reported by Jace Launcher and the mod.
 - **Profiles:** picture, display name, pronouns, about me, profile color, and up to 5 links.
-- **Voice calls:** in Jace Launcher, and controlled from the mod.
+- **Voice calls:** one-to-one with friends, in the web app, the desktop app and Jace Launcher (all can call each other), and controlled from the mod.
 - **Hosted worlds:** host from the mod with roles, plus LuckPerms and WorldEdit permission menus.
 
 ## Releases

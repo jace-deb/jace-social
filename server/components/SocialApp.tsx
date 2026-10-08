@@ -6,6 +6,8 @@ import {
   api, connectLive, desktop, desktopReady, getToken, inDesktop, joinAddress, setToken, statusLabel, type Group, type Me, type Person,
   type ServerDetail, type ServerItem,
 } from "@/lib/client";
+import { Calls } from "@/lib/calls";
+import { CallPanel, useCall } from "./CallPanel";
 import { Chat } from "./Chat";
 import { ActivityCard, Avatar, PersonRow } from "./ui";
 import {
@@ -96,6 +98,21 @@ function Main({ me, setMe, signOut, inviteCode }: {
   viewRef.current = view;
 
   const err = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(""), 5000); }, []);
+  const meRef = useRef(me);
+  meRef.current = me;
+  const notifyUser = useCallback((title: string, body: string) => {
+    if (meRef.current.status === "dnd" || document.hasFocus()) return;
+    const d = desktop();
+    if (d) d.notify(title, body);
+    else if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body });
+  }, []);
+  const [calls] = useState(() => new Calls(err, (name) => notifyUser(`${name} is calling`, "Open Jace Social to answer")));
+  const call = useCall(calls);
+  useEffect(() => {
+    const bye = () => calls.hangUp();
+    window.addEventListener("pagehide", bye);
+    return () => { window.removeEventListener("pagehide", bye); bye(); };
+  }, [calls]);
   const loadFriends = useCallback(() => api<FriendsData>("/friends").then(setFriends).catch((e) => err(e.message)), [err]);
   const loadGroups = useCallback(() => api<{ groups: Group[] }>("/groups").then((d) => setGroups(d.groups)).catch((e) => err(e.message)), [err]);
   const loadServers = useCallback(() => api<{ servers: ServerItem[] }>("/servers").then((d) => setServers(d.servers)).catch((e) => err(e.message)), [err]);
@@ -139,12 +156,6 @@ function Main({ me, setMe, signOut, inviteCode }: {
 
   useEffect(() => {
     let presenceTimer: ReturnType<typeof setTimeout> | null = null;
-    const notifyUser = (title: string, body: string) => {
-      if (me.status === "dnd" || document.hasFocus()) return;
-      const d = desktop();
-      if (d) d.notify(title, body);
-      else if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body });
-    };
     return connectLive(me.realtime, me.inbox, (event, p) => {
       const v = viewRef.current;
       if (event === "message") {
@@ -171,10 +182,10 @@ function Main({ me, setMe, signOut, inviteCode }: {
           else void loadDetail(p.server_id);
         }
       } else if (event === "call") {
-        if (p.kind === "offer") notifyUser(`${p.name} is calling`, "Answer in Jace Launcher");
+        void calls.onSignal(p);
       }
     });
-  }, [me.realtime, me.inbox, me.status, loadFriends, loadGroups, loadServers, loadDetail]);
+  }, [me.realtime, me.inbox, notifyUser, calls, loadFriends, loadGroups, loadServers, loadDetail]);
 
   // unread badge for the desktop app / tab title
   const unread = friends.friends.reduce((n, f) => n + (f.unread ?? 0), 0) + friends.incoming.length
@@ -276,12 +287,15 @@ function Main({ me, setMe, signOut, inviteCode }: {
       {/* main */}
       <main className="main">
         {view.kind === "home" && <FriendsHome data={friends} reload={loadFriends} onError={err}
-          onOpen={(p) => setProfile(p.uuid)} onMessage={(p) => go({ kind: "dm", uuid: p.uuid })} back={() => setMobileMain(false)} />}
+          onOpen={(p) => setProfile(p.uuid)} onMessage={(p) => go({ kind: "dm", uuid: p.uuid })}
+          onCall={Calls.supported() && call.state === "idle" ? (p) => void calls.call(p.uuid, p.name) : undefined} back={() => setMobileMain(false)} />}
         {view.kind === "dm" && dmPerson && <>
           <div className="main-head">
             <button className="icon-btn mobile-only" onClick={() => setMobileMain(false)}>←</button>
             <Avatar p={dmPerson} size={26} status={dmPerson.status} /><span className="title">{dmPerson.name}</span>
             <span className="topic">{shortLine(dmPerson)}</span>
+            {Calls.supported() && <button className="icon-btn" title={`Voice call ${dmPerson.name}`} aria-label="Start a voice call"
+              disabled={call.state !== "idle"} onClick={() => void calls.call(dmPerson.uuid, dmPerson.name)}>📞</button>}
           </div>
           <Chat target={{ kind: "dm", uuid: dmPerson.uuid, name: dmPerson.name }} me={me} people={people} canModerate={false}
             reloadKey={reload} onOpenProfile={setProfile} onError={err} placeholder={`Message ${dmPerson.name}`} />
@@ -330,6 +344,7 @@ function Main({ me, setMe, signOut, inviteCode }: {
       {modal === "serverSettings" && detail && <ServerSettingsModal detail={detail} me={me} onClose={() => setModal(null)} onError={err}
         onChanged={() => { void loadDetail(detail.server.id); void loadServers(); }}
         onLeft={() => { setView({ kind: "home" }); setDetail(null); void loadServers(); }} />}
+      <CallPanel calls={calls} info={call} people={people} />
       {toast && <div role="alert" style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#3a2222",
         border: "1px solid #6b3433", padding: "10px 16px", borderRadius: 10, zIndex: 60, maxWidth: "90vw" }}>{toast}</div>}
     </div>
@@ -426,9 +441,9 @@ function GroupMenu({ group, me, friends, onError, onChanged, onLeft }: {
   );
 }
 
-function FriendsHome({ data, reload, onError, onOpen, onMessage, back }: {
+function FriendsHome({ data, reload, onError, onOpen, onMessage, onCall, back }: {
   data: FriendsData; reload: () => void; onError: (m: string) => void;
-  onOpen: (p: Person) => void; onMessage: (p: Person) => void; back: () => void;
+  onOpen: (p: Person) => void; onMessage: (p: Person) => void; onCall?: (p: Person) => void; back: () => void;
 }) {
   const [tab, setTab] = useState<"online" | "all" | "pending" | "add">("online");
   const [name, setName] = useState("");
@@ -481,6 +496,7 @@ function FriendsHome({ data, reload, onError, onOpen, onMessage, back }: {
         {list.length === 0 && <p className="muted">{tab === "online" ? "No friends are online right now." : "No friends yet - add some!"}</p>}
         {sortFriends(list).map((f) => (
           <PersonRow key={f.uuid} p={f} onClick={() => onOpen(f)}>
+            {onCall && f.online && <button className="btn small" title={`Voice call ${f.name}`} onClick={() => onCall(f)}>📞</button>}
             <button className="btn small" onClick={() => onMessage(f)}>Message</button>
           </PersonRow>
         ))}

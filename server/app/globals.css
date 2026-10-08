@@ -172,3 +172,12 @@ textarea { resize: vertical; }
   .settings { grid-template-columns: 1fr; }
   .settings nav { border-radius: 16px 16px 0 0; grid-auto-flow: column; overflow-x: auto; }
 }
+
+/* voice call panel */
+.call-panel { position: fixed; right: 20px; bottom: 20px; z-index: 55; display: flex; align-items: center; gap: 10px;
+  background: #1b1e24; border: 1px solid #2f3540; border-radius: 14px; padding: 12px 14px; box-shadow: 0 10px 30px #0008;
+  max-width: calc(100vw - 32px); }
+.call-who { display: grid; min-width: 0; margin-right: 6px; }
+.call-who b, .call-who span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.call-who span { color: var(--muted); font-size: 13px; }
+@media (max-width: 700px) { .call-panel { left: 16px; right: 16px; bottom: 16px; } .call-who { flex: 1; } }

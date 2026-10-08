@@ -48,7 +48,7 @@ Jace Launcher, the desktop app and the Jace Social mod all talk to it. It's a Ne
 
 ## Voice calls
 
-Calls are made in Jace Launcher (the Jace Friends mod controls them through the launcher). Audio goes straight between the two players with WebRTC. When a direct connection isn't possible, it goes through Cloudflare's free TURN relay.
+Calls work in the web app, the desktop app and Jace Launcher, and any of them can call any other (the Jace Social mod controls calls through the launcher). The web app uses the browser's WebRTC (`lib/calls.ts`), the launcher uses aiortc; both send a full description once ICE gathering finishes, with no trickle. Audio goes straight between the two players. When a direct connection isn't possible, it goes through Cloudflare's free TURN relay.
 
 Setup:
 1. In Supabase's **SQL Editor**, run `supabase/002_calls.sql`.

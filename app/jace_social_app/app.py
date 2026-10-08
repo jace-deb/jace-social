@@ -10,11 +10,12 @@ from PySide6.QtCore import QObject, Property, QStandardPaths, Qt, QTimer, QUrl, 
 from PySide6.QtGui import QAction, QDesktopServices, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineSettings
+from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEnginePermission, QWebEngineProfile, QWebEngineScript,
+                                      QWebEngineSettings)
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QDialog, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout
 
-from jace_social_app import APP_NAME, APP_VERSION, minecraft
+from jace_social_app import APP_NAME, APP_VERSION, minecraft, updates
 
 BASE = os.environ.get("JACE_SOCIAL_URL", "https://jace-social.vercel.app").rstrip("/")
 # pages that open inside the app; everything else goes to your normal browser
@@ -46,6 +47,8 @@ BRIDGE_JS = """
       linkMinecraft: function (token) { return call("linkMinecraft", token); },
       notify: function (title, body) { b.notify(String(title), String(body)); },
       setUnread: function (n) { b.setUnread(Number(n) || 0); },
+      checkForUpdate: function () { return call("checkForUpdate"); },
+      openUpdate: function () { b.openUpdate(); },
     };
     window.dispatchEvent(new Event("jacedesktop"));
   });
@@ -136,9 +139,28 @@ class Bridge(QObject):
     def setUnread(self, n: int):
         self.window.set_unread(n)
 
+    @Slot(int)
+    def checkForUpdate(self, rid: int):
+        self.window.check_for_update(lambda r: self.reply.emit(rid, json.dumps(r)))
+
+    @Slot()
+    def openUpdate(self):
+        self.window.open_update()
+
 
 class Page(QWebEnginePage):
     """Keeps Jace Social (and Jace sign-in) in the app; other links open in the browser."""
+
+    def __init__(self, profile, parent=None):
+        super().__init__(profile, parent)
+        self.permissionRequested.connect(self._permission)
+
+    def _permission(self, p: QWebEnginePermission):
+        # the microphone, for voice calls - only for Jace Social itself
+        if p.permissionType() == QWebEnginePermission.PermissionType.MediaAudioCapture and p.origin().host() == QUrl(BASE).host():
+            p.grant()
+        else:
+            p.deny()
 
     def acceptNavigationRequest(self, url: QUrl, nav_type, is_main_frame: bool) -> bool:
         if is_main_frame and url.scheme() in ("http", "https") and url.host() not in IN_APP_HOSTS:
@@ -154,6 +176,8 @@ class Page(QWebEnginePage):
 
 
 class Window(QMainWindow):
+    update_ready = Signal(dict, object)           # update check result, and what to do with it
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
@@ -170,6 +194,8 @@ class Window(QMainWindow):
         self.profile.setHttpUserAgent(self.profile.httpUserAgent() + f" JaceSocialDesktop/{APP_VERSION}")
         self.page = Page(self.profile, self)
         self.page.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, True)
+        # so an incoming call can ring before you've clicked anything
+        self.page.settings().setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False)
 
         self.channel = QWebChannel(self.page)
         self.bridge = Bridge(self)
@@ -196,9 +222,12 @@ class Window(QMainWindow):
             menu = QMenu()
             show = QAction("Open Jace Social", menu)
             show.triggered.connect(self.bring_up)
+            update = QAction("Check for updates", menu)
+            update.triggered.connect(lambda: self.check_for_update(self._update_dialog))
             quit_ = QAction("Quit", menu)
             quit_.triggered.connect(self.quit)
             menu.addAction(show)
+            menu.addAction(update)
             menu.addSeparator()
             menu.addAction(quit_)
             self.tray.setContextMenu(menu)
@@ -206,6 +235,40 @@ class Window(QMainWindow):
                                         if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
             self.tray.messageClicked.connect(self.bring_up)
             self.tray.show()
+
+        # look for a new version a little after starting, and tell once
+        self.update = None
+        self.update_ready.connect(lambda r, cb: cb(r))
+        QTimer.singleShot(15_000, lambda: self.check_for_update(self._update_notice))
+
+    def check_for_update(self, done):
+        """Ask GitHub off the UI thread; done(result) runs on the UI thread."""
+        def work():
+            try:
+                r = updates.check()
+                self.update = r if r["newer"] else None
+            except Exception:  # noqa: BLE001 - offline, rate limited, ...
+                r = {"error": "Couldn't check for updates - try again later", "current": APP_VERSION}
+            self.update_ready.emit(r, done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def open_update(self):
+        if self.update:
+            QDesktopServices.openUrl(QUrl(self.update["url"]))
+
+    def _update_notice(self, r: dict):
+        if r.get("newer") and self.tray:
+            self.tray.showMessage(APP_NAME, f"Jace Social {r['latest']} is out. Right-click the tray icon → Check for updates.",
+                                  self.windowIcon(), 8000)
+
+    def _update_dialog(self, r: dict):
+        if r.get("error"):
+            QMessageBox.warning(self, APP_NAME, r["error"])
+        elif not r["newer"]:
+            QMessageBox.information(self, APP_NAME, f"You have the newest version ({APP_VERSION}).")
+        elif QMessageBox.question(self, APP_NAME, f"Jace Social {r['latest']} is out (you have {APP_VERSION}).\n\nDownload it now?") \
+                == QMessageBox.StandardButton.Yes:
+            self.open_update()
 
     def _loaded(self, ok: bool):
         if not ok:
