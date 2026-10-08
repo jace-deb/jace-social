@@ -44,14 +44,14 @@ if [ -n "$XCBC" ]; then cp -L "$XCBC" "$QTLIB/libxcb-cursor.so.0"; else echo "wa
 # its graphics driver: a newer distro's Mesa loaded next to Ubuntu 22.04's libstdc++ or
 # libgbm can't start OpenGL, and Qt aborts with "Could not initialize GLX". So drop them
 # and use the computer's own, like the AppImage project's excludelist. Python's and Qt's
-# own libraries stay, and so do the small XCB helpers that minimal distros may lack.
+# own libraries stay, and so do the XCB extension libraries, which minimal distros may lack.
 HOST_LIBS=(
   libstdc++.so.* libgcc_s.so.* libatomic.so.* libGL.so.* libGLX.so.* libGLdispatch.so.* libOpenGL.so.* \
   libEGL.so.* libdrm.so.* libgbm.so.* libxshmfence.so.* libepoxy.so.* libX11.so.* libX11-xcb.so.* libXau.so.* \
   libXdmcp.so.* libXext.so.* libXfixes.so.* libXi.so.* libXrender.so.* libXrandr.so.* libXcursor.so.* \
-  libXinerama.so.* libXcomposite.so.* libXdamage.so.* libXtst.so.* libxkbfile.so.* libxcb.so.* libxcb-glx.so.* \
-  libxcb-randr.so.* libxcb-render.so.* libxcb-shm.so.* libxcb-sync.so.* libxcb-xfixes.so.* libxcb-xkb.so.* \
-  libxcb-shape.so.* libglib-2.0.so.* libgio-2.0.so.* libgobject-2.0.so.* libgmodule-2.0.so.* \
+  libXinerama.so.* libXcomposite.so.* libXdamage.so.* libXtst.so.* libxkbfile.so.* libxcb.so.* \
+  \
+  libglib-2.0.so.* libgio-2.0.so.* libgobject-2.0.so.* libgmodule-2.0.so.* \
   libgthread-2.0.so.* libpcre.so.* libpcre2-8.so.* libmount.so.* libblkid.so.* libselinux.so.* libuuid.so.* \
   libgtk-3.so.* libgdk-3.so.* libgdk_pixbuf-2.0.so.* libatk-1.0.so.* libatk-bridge-2.0.so.* libatspi.so.* \
   libcairo.so.* libcairo-gobject.so.* libpango-1.0.so.* libpangocairo-1.0.so.* libpangoft2-1.0.so.* \
