@@ -17,11 +17,11 @@ ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "packaging" / "jace-store.mjs"
 REPO = "jace-deb/jace-social"
 SLUG = "jace-social"
-FILES = [   # (file ending, label); this order is the order on the store
-    ("-windows-x64-setup.exe", "Windows"),
-    ("-macos-arm64.app.zip", "macOS (Apple Silicon)"),
-    ("-macos-x86_64.app.zip", "macOS (Intel)"),
-    ("-x86_64.AppImage", "Linux"),
+FILES = [   # (file ending, label, Jace Store platform); this order is the order on the store
+    ("-windows-x64-setup.exe", "Windows", "windows"),
+    ("-macos-arm64.app.zip", "macOS (Apple Silicon)", "macos"),
+    ("-macos-x86_64.app.zip", "macOS (Intel)", "macos"),
+    ("-x86_64.AppImage", "Linux", "linux"),
 ]
 
 
@@ -33,7 +33,9 @@ def main():
                                  headers={"Accept": "application/vnd.github+json", "User-Agent": "jace-social-publish"})
     with urllib.request.urlopen(req, timeout=30) as r:
         assets = json.load(r).get("assets", [])
-    links = [f"{a['browser_download_url']}|{label}" for end, label in FILES for a in assets if a["name"].endswith(end)]
+    found = [(a, label, plat) for end, label, plat in FILES for a in assets if a["name"].endswith(end)]
+    links = [f"{a['browser_download_url']}|{label}" for a, label, _ in found]
+    platforms = ",".join(dict.fromkeys(plat for _, _, plat in found))
     if not links:
         sys.exit(f"{tag}: no downloads in the GitHub release")
     text = (ROOT / "app" / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -48,7 +50,7 @@ def main():
         print(f"{version} is already on Jace Store")
         return
     cmd = ["node", str(CLI), "publish", SLUG, "--version", version, "--name", f"Jace Social {version}",
-           "--changelog", changelog, "--primary-link", "--json"]
+           "--changelog", changelog, "--loaders", platforms, "--primary-link", "--json"]
     for link in links:
         cmd += ["--link", link]
     print(" ".join(cmd[:8]), f"... {len(links)} downloads")
