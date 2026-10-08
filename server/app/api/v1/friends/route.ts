@@ -1,5 +1,6 @@
 // GET: friends (with online status + what they're doing), incoming and outgoing requests
-// POST {name}: send a friend request (works even if they haven't used Jace Launcher yet)
+// POST {name} or {uuid}: send a friend request. name can be a Minecraft username (works even if they
+//   haven't used Jace Social yet) or a Jace username (write @name to only look up Jace accounts).
 // DELETE ?uuid=: remove a friend or cancel/decline a request
 import {
   ApiError, body, cleanUuid, db, ensureProfile, friendsOf, handler, me, mojangLookup, notify, publicProfile,
@@ -25,12 +26,40 @@ export const GET = handler(async (req) => {
   };
 });
 
+/** Who "name" means: a Jace user (@name, or not a valid Minecraft name) or a Minecraft player. */
+async function findTarget(b: { name?: string; uuid?: string }): Promise<Profile> {
+  if (b.uuid) {
+    const { data } = await db().from("profiles").select("*").eq("uuid", cleanUuid(b.uuid)).maybeSingle();
+    if (!data) throw new ApiError(404, "Player not found");
+    return data as Profile;
+  }
+  const raw = String(b.name ?? "").trim();
+  const jaceOnly = raw.startsWith("@") || !/^[A-Za-z0-9_]{1,16}$/.test(raw);
+  const name = raw.replace(/^@/, "");
+  if (!name) throw new ApiError(400, "Type a username");
+  const jace = async () => {
+    const { data } = await db().from("profiles").select("*").ilike("jace_name", name.replace(/[%_\\]/g, "")).limit(1).maybeSingle();
+    return data as Profile | null;
+  };
+  if (jaceOnly) {
+    const j = await jace();
+    if (!j) throw new ApiError(404, `No Jace user called "${name}"`);
+    return j;
+  }
+  try {
+    const target = await mojangLookup(name);
+    return await ensureProfile(target.uuid, target.name);
+  } catch (e) {
+    const j = await jace();                     // not a Minecraft player: maybe a Jace username
+    if (j) return j;
+    throw e;
+  }
+}
+
 export const POST = handler(async (req) => {
   const p = await me(req);
-  const { name } = await body<{ name?: string }>(req);
-  const target = await mojangLookup(String(name ?? "").trim());
-  if (target.uuid === p.uuid) throw new ApiError(400, "That's you!");
-  const other = await ensureProfile(target.uuid, target.name);
+  const other = await findTarget(await body<{ name?: string; uuid?: string }>(req));
+  if (other.uuid === p.uuid) throw new ApiError(400, "That's you!");
 
   const { data: existing } = await db().from("friendships").select("*")
     .or(`and(requester.eq.${p.uuid},addressee.eq.${other.uuid}),and(requester.eq.${other.uuid},addressee.eq.${p.uuid})`)

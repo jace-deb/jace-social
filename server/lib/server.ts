@@ -28,20 +28,38 @@ export class ApiError extends Error {
 export type Profile = {
   uuid: string; name: string; inbox: string;
   activity: Activity | null; last_seen: string | null; signed_up: string | null;
+  jace_sub?: string | null; jace_name?: string | null; mc_linked?: boolean;
+  display_name?: string | null; avatar_url?: string | null; bio?: string | null; pronouns?: string | null;
+  accent_color?: string | null; links?: { label: string; url: string }[];
+  status?: Status; custom_status?: string | null; status_emoji?: string | null;
 };
+export type Status = "online" | "idle" | "dnd" | "invisible";
+/**
+ * Rich presence. type says where they are; the rest is optional detail:
+ * details/state are two free text lines (e.g. "Survival world", "Building a castle"),
+ * started_at shows "for 12 minutes", app is what sent it (launcher / minecraft / jace-social).
+ */
 export type Activity = {
-  type: "launcher" | "playing" | "hosting";
+  type: "launcher" | "playing" | "hosting" | "app";
   instance?: string; version?: string; server?: string; world?: string; address?: string;
+  loader?: string; modpack?: string; details?: string; state?: string; started_at?: string; app?: string;
 };
+
+/** Where this site lives (for OAuth redirects and links). */
+export const siteUrl = () => (process.env.PUBLIC_URL || "https://jace-social.vercel.app").replace(/\/+$/, "");
 
 export const token = () => randomBytes(32).toString("base64url");
 export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
-/** Wrap a route handler: JSON errors, CORS-free (clients aren't browsers). */
-export function handler(fn: (req: Request) => Promise<unknown>) {
-  return async (req: Request) => {
+export type Ctx = { params: Promise<Record<string, string>> };
+
+/** Wrap a route handler: JSON errors, CORS for the web app and other sites. */
+export function handler(fn: (req: Request, ctx: Ctx) => Promise<unknown>) {
+  return async (req: Request, ctx: Ctx) => {
     try {
-      return Response.json(await fn(req), { headers: { "Access-Control-Allow-Origin": "*" } });
+      const out = await fn(req, ctx);
+      if (out instanceof Response) return out;
+      return Response.json(out, { headers: { "Access-Control-Allow-Origin": "*" } });
     } catch (e) {
       if (e instanceof ApiError) return Response.json({ error: e.message }, { status: e.status });
       console.error(e);
@@ -126,14 +144,33 @@ export function isOnline(p: Pick<Profile, "last_seen">) {
   return !!p.last_seen && Date.now() - new Date(p.last_seen).getTime() < ONLINE_WINDOW_MS;
 }
 
-/** Public view of a player (what friends see). */
+/** Minecraft head for players without their own picture. */
+export function avatarFor(p: Pick<Profile, "uuid" | "avatar_url" | "mc_linked">) {
+  if (p.avatar_url) return p.avatar_url;
+  return p.mc_linked !== false ? `https://mc-heads.net/avatar/${p.uuid}/128` : null;
+}
+
+/**
+ * Public view of a player (what friends see). "Invisible" players look offline,
+ * and their last-seen time is hidden.
+ */
 export function publicProfile(p: Profile) {
-  const online = isOnline(p);
+  const invisible = p.status === "invisible";
+  const online = isOnline(p) && !invisible;
   return {
-    uuid: p.uuid, name: p.name, online, uses_jace: !!p.signed_up,
-    activity: online ? p.activity : null, last_seen: p.last_seen,
+    uuid: p.uuid, name: p.display_name || p.name, online, uses_jace: !!p.signed_up,
+    activity: online ? p.activity : null, last_seen: invisible ? null : p.last_seen,
+    status: online ? (p.status ?? "online") : "offline",
+    custom_status: p.custom_status ?? null, status_emoji: p.status_emoji ?? null,
+    minecraft_name: p.mc_linked !== false ? p.name : null,
+    jace_name: p.jace_name ?? null,
+    avatar_url: avatarFor(p),
+    bio: p.bio ?? null, pronouns: p.pronouns ?? null, accent_color: p.accent_color ?? null, links: p.links ?? [],
   };
 }
+
+/** A new random player id for Jace-only accounts (same shape as a Minecraft UUID). */
+export const newPlayerId = () => randomBytes(16).toString("hex");
 
 /** Accepted friends of a player, as profile rows. */
 export async function friendsOf(uuid: string): Promise<Profile[]> {
@@ -148,6 +185,13 @@ export async function areFriends(a: string, b: string): Promise<boolean> {
   const { data } = await db().from("friendships").select("status")
     .or(`and(requester.eq.${a},addressee.eq.${b}),and(requester.eq.${b},addressee.eq.${a})`).maybeSingle();
   return data?.status === "accepted";
+}
+
+/** Inboxes (live-notification channels) of these players. */
+export async function inboxesOf(uuids: string[]): Promise<string[]> {
+  if (!uuids.length) return [];
+  const { data } = await db().from("profiles").select("inbox").in("uuid", uuids);
+  return (data ?? []).map((r) => r.inbox);
 }
 
 export function cleanUuid(u: unknown): string {
