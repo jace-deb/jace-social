@@ -411,8 +411,23 @@ def close_splash():
         pass
 
 
+def running_under_wine() -> bool:
+    """Wine (Bottles, Lutris, Soda) has a wine_get_version export in its ntdll."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    try:
+        return hasattr(ctypes.WinDLL("ntdll"), "wine_get_version")
+    except OSError:
+        return False
+
+
 def main():
     close_splash()
+    if running_under_wine():
+        # Chromium's GPU compositor crashes on Wine without a real GPU driver (seen with
+        # Soda), so draw the web page in software there; real Windows keeps the GPU
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "") + " --disable-gpu").strip()
     argv = sys.argv[1:]
     if desktop.handle_cli(argv):
         return
