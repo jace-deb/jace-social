@@ -39,6 +39,33 @@ QTLIB="$(find "$BUILD/dist/jace-social" -type d -path '*PySide6/Qt/lib' | head -
 XCBC="$(ldconfig -p | awk '/libxcb-cursor.so.0 /{print $NF; exit}')"
 if [ -n "$XCBC" ]; then cp -L "$XCBC" "$QTLIB/libxcb-cursor.so.0"; else echo "warning: libxcb-cursor0 not bundled (install libxcb-cursor0)"; fi
 
+# PyInstaller also copies system libraries from the build machine (GLib, GTK, X11/XCB,
+# Mesa's helpers, libstdc++, NSS...). Every desktop has its own, and they have to match
+# its graphics driver: a newer distro's Mesa loaded next to Ubuntu 22.04's libstdc++ or
+# libgbm can't start OpenGL, and Qt aborts with "Could not initialize GLX". So drop them
+# and use the computer's own, like the AppImage project's excludelist. Python's and Qt's
+# own libraries stay, and so do the small XCB helpers that minimal distros may lack.
+HOST_LIBS=(
+  libstdc++.so.* libgcc_s.so.* libatomic.so.* libGL.so.* libGLX.so.* libGLdispatch.so.* libOpenGL.so.* \
+  libEGL.so.* libdrm.so.* libgbm.so.* libxshmfence.so.* libepoxy.so.* libX11.so.* libX11-xcb.so.* libXau.so.* \
+  libXdmcp.so.* libXext.so.* libXfixes.so.* libXi.so.* libXrender.so.* libXrandr.so.* libXcursor.so.* \
+  libXinerama.so.* libXcomposite.so.* libXdamage.so.* libXtst.so.* libxkbfile.so.* libxcb.so.* libxcb-glx.so.* \
+  libxcb-randr.so.* libxcb-render.so.* libxcb-shm.so.* libxcb-sync.so.* libxcb-xfixes.so.* libxcb-xkb.so.* \
+  libxcb-shape.so.* libglib-2.0.so.* libgio-2.0.so.* libgobject-2.0.so.* libgmodule-2.0.so.* \
+  libgthread-2.0.so.* libpcre.so.* libpcre2-8.so.* libmount.so.* libblkid.so.* libselinux.so.* libuuid.so.* \
+  libgtk-3.so.* libgdk-3.so.* libgdk_pixbuf-2.0.so.* libatk-1.0.so.* libatk-bridge-2.0.so.* libatspi.so.* \
+  libcairo.so.* libcairo-gobject.so.* libpango-1.0.so.* libpangocairo-1.0.so.* libpangoft2-1.0.so.* \
+  libharfbuzz.so.* libfribidi.so.* libthai.so.* libdatrie.so.* libgraphite2.so.* libpixman-1.so.* \
+  libpng16.so.* libjpeg.so.* libfontconfig.so.* libfreetype.so.* libbrotlicommon.so.* libbrotlidec.so.* \
+  libexpat.so.* libz.so.* libdbus-1.so.* libsystemd.so.* libcap.so.* libgcrypt.so.* libgpg-error.so.* \
+  liblz4.so.* libzstd.so.* libbsd.so.* libmd.so.* libasound.so.* libcups.so.* libavahi-client.so.* \
+  libavahi-common.so.* libgnutls.so.* libnettle.so.* libhogweed.so.* libgmp.so.* libp11-kit.so.* libtasn1.so.* \
+  libidn2.so.* libunistring.so.* libgssapi_krb5.so.* libkrb5.so.* libk5crypto.so.* libkrb5support.so.* \
+  libcom_err.so.* libkeyutils.so.* libnss3.so libnssutil3.so libsmime3.so libnspr4.so libplc4.so libplds4.so \
+  libfreebl3.so libfreeblpriv3.so
+)
+(cd "$BUILD/dist/jace-social/_internal" && for pat in "${HOST_LIBS[@]}"; do rm -f $pat; done)
+
 echo "==> AppDir"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/metainfo" \
          "$APPDIR/usr/share/icons/hicolor/256x256/apps"

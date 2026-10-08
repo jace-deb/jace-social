@@ -1,5 +1,8 @@
 # Jace Social desktop app changelog
 
+## 1.0.1
+- Linux: fixes the app not starting on newer distros ("Could not initialize GLX"). The AppImage now uses your system's own graphics, GTK and GLib libraries instead of older copies, and is 25 MB smaller.
+
 ## 1.0.0
 - First release: Jace Social in its own window - friends, direct messages, group chats and servers.
 - Sign in with Jace or with Minecraft (Microsoft), and link the other one any time.

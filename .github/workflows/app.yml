@@ -215,7 +215,7 @@ jobs:
       - name: Install system libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libfuse2 desktop-file-utils xdg-user-dirs
+          sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libfuse2 desktop-file-utils xdg-user-dirs xvfb
       - name: Create virtualenv
         run: |
           python -m venv .venv
@@ -223,12 +223,11 @@ jobs:
           .venv/bin/pip install -r requirements.txt pyinstaller
       - name: Build AppImage
         run: ./packaging/build_appimage.sh
-      - name: Smoke test (start the packaged app headless)
+      - name: Smoke test (start the packaged app on a virtual screen, with OpenGL)
         env:
-          QT_QPA_PLATFORM: offscreen
           APPIMAGE_EXTRACT_AND_RUN: "1"
           JACE_SOCIAL_HOME: ${{ runner.temp }}/jace-social-home
-        run: ./dist/JaceSocial-*-x86_64.AppImage --self-test
+        run: xvfb-run -a ./dist/JaceSocial-*-x86_64.AppImage --self-test
       - name: Test the Linux installer, update and uninstall
         env:
           QT_QPA_PLATFORM: offscreen
@@ -271,9 +270,33 @@ jobs:
           path: app/dist/*.AppImage
           if-no-files-found: error
 
+  linux-newer:
+    # The AppImage is built on Ubuntu 22.04, so make sure it also starts on a newer
+    # distro with its own (newer) Mesa, X11 and GLib, on a real X display with OpenGL
+    needs: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-linux
+          path: dl
+      - name: Desktop libraries (what a normal desktop already has)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libegl1 libgl1-mesa-dri libnss3 libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-randr0 libxcb-xinerama0 libasound2t64 libfontconfig1 libdbus-1-3
+      - name: Start it
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          JACE_SOCIAL_HOME: ${{ runner.temp }}/jace-social-home
+        run: |
+          chmod +x dl/*.AppImage
+          xvfb-run -a dl/*.AppImage --self-test
+
   release:
     if: startsWith(github.ref, 'refs/tags/app-v')
-    needs: [windows, wine, macos, linux]
+    needs: [windows, wine, macos, linux, linux-newer]
     runs-on: ubuntu-latest
     permissions:
       contents: write
