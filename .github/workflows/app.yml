@@ -215,7 +215,10 @@ jobs:
       - name: Install system libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libfuse2 desktop-file-utils xdg-user-dirs xvfb
+          # the X11 helper libraries Qt's xcb plugin needs, so PyInstaller bundles them
+          sudo apt-get install -y libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xkb1 libxcb-util1 libxkbcommon-x11-0 libegl1 \
+            libfuse2 desktop-file-utils xdg-user-dirs xvfb
       - name: Create virtualenv
         run: |
           python -m venv .venv
