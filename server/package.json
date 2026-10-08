@@ -2,7 +2,7 @@
   "name": "jace-social",
   "version": "1.0.0",
   "private": true,
-  "description": "Friends, chat and hosted worlds for Jace Launcher",
+  "description": "Jace Social: friends, chat, group chats and servers - with Minecraft built in",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

@@ -20,7 +20,7 @@ import java.util.concurrent.CompletableFuture;
  * Only touch this class when LuckPerms is installed: it's the only one that loads LuckPerms classes.
  */
 final class LuckPermsBridge {
-	/** Groups Jace Friends' roles map to (see Roles). */
+	/** Groups Jace Social' roles map to (see Roles). */
 	static final String[] ROLE_GROUPS = {"jace_visitor", "jace_builder", "jace_admin"};
 
 	private LuckPermsBridge() {}

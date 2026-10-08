@@ -31,7 +31,7 @@ public final class Social {
 	public static final String BASE = System.getProperty("jacefriends.url", "https://jace-social.vercel.app");
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 	private static final ExecutorService IO = Executors.newFixedThreadPool(2, r -> {
-		Thread t = new Thread(r, "Jace Friends");
+		Thread t = new Thread(r, "Jace Social");
 		t.setDaemon(true);
 		return t;
 	});
@@ -211,6 +211,35 @@ public final class Social {
 		call("POST", "/api/v1/messages/read", b, null, true);
 	}
 
+	// --- group chats (same as the Jace Social app's; server channels aren't shown in game) ---
+
+	public static JsonObject groups() throws Exception {
+		return call("GET", "/api/v1/groups", null, null, true).getAsJsonObject();
+	}
+
+	public static JsonObject groupMessages(String groupId) throws Exception {
+		return call("GET", "/api/v1/channels/" + groupId + "/messages", null, null, true).getAsJsonObject();
+	}
+
+	public static void sendGroup(String groupId, String text) throws Exception {
+		JsonObject b = new JsonObject();
+		b.addProperty("body", text);
+		call("POST", "/api/v1/channels/" + groupId + "/messages", b, null, true);
+	}
+
+	public static void readGroup(String groupId) throws Exception {
+		call("POST", "/api/v1/channels/" + groupId + "/read", new JsonObject(), null, true);
+	}
+
+	public static JsonObject createGroup(String name, java.util.List<String> members) throws Exception {
+		JsonObject b = new JsonObject();
+		b.addProperty("name", name);
+		com.google.gson.JsonArray m = new com.google.gson.JsonArray();
+		for (String u : members) m.add(u);
+		b.add("members", m);
+		return call("POST", "/api/v1/groups", b, null, true).getAsJsonObject();
+	}
+
 	public static void presence(JsonObject activity, boolean offline) throws Exception {
 		JsonObject b = new JsonObject();
 		b.add("activity", activity);
@@ -232,8 +261,10 @@ public final class Social {
 		if (!f.get("online").getAsBoolean()) {
 			return f.has("uses_jace") && !f.get("uses_jace").getAsBoolean() ? "Hasn't joined Jace yet" : "Offline";
 		}
+		String custom = str(f, "custom_status");
 		JsonObject a = activity(f);
 		String type = str(a, "type");
+		if (!custom.isEmpty() && !type.equals("hosting")) return custom;
 		if (type.equals("hosting")) {
 			String world = str(a, "world");
 			return "Hosting \"" + (world.isEmpty() ? "a world" : world) + "\" " + str(a, "version");
@@ -242,7 +273,11 @@ public final class Social {
 			String server = str(a, "server");
 			return "Playing " + str(a, "version") + (server.isEmpty() ? "" : " on " + server);
 		}
-		return "Online";
+		return switch (str(f, "status")) {
+			case "idle" -> "Idle";
+			case "dnd" -> "Do Not Disturb";
+			default -> type.equals("launcher") ? "In Jace Launcher" : "Online";
+		};
 	}
 
 	/** Address to join this friend at, or "" if they aren't hosting / on a server. */

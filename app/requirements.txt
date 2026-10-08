@@ -1,0 +1,3 @@
+# PySide6 6.10+ needs icuuc.dll (breaks under Wine/Soda) and drops macOS 12, so stay on 6.9
+PySide6>=6.9,<6.10
+requests>=2.31

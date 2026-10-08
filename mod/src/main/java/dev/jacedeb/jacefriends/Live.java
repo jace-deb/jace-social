@@ -22,7 +22,7 @@ import java.util.function.Consumer;
  */
 public final class Live implements WebSocket.Listener {
 	private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(r -> {
-		Thread t = new Thread(r, "Jace Friends live");
+		Thread t = new Thread(r, "Jace Social live");
 		t.setDaemon(true);
 		return t;
 	});

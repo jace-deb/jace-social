@@ -1,4 +1,10 @@
-# Jace Friends changelog
+# Jace Social mod changelog
+
+## 1.3.0
+- **Jace Friends is now the Jace Social mod.** It's part of [Jace Social](https://jace-deb.github.io/jace-social/), which also has a web app and a desktop app with the same friends.
+- **Group chats:** they appear in your friends list. Chat in them, or start a new one with **New group**.
+- Friends see your **status** (Idle, Do Not Disturb) and **custom status**.
+- **Richer presence:** friends see your mod loader, world name and how long you've been playing.
 
 ## 1.2.0
 - **LuckPerms menu** (Host world > LuckPerms…): edit each group's permissions and pick players' groups without typing commands. **Let me use /lp** gives you /lp access; a hosted world has no server console, so before this nobody could use /lp.

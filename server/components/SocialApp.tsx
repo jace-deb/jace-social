@@ -3,7 +3,7 @@
 // The desktop app shows this same page (with a small bridge for Microsoft sign-in and notifications).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, connectLive, desktop, getToken, joinAddress, setToken, statusLabel, type Group, type Me, type Person,
+  api, connectLive, desktop, desktopReady, getToken, inDesktop, joinAddress, setToken, statusLabel, type Group, type Me, type Person,
   type ServerDetail, type ServerItem,
 } from "@/lib/client";
 import { Chat } from "./Chat";
@@ -50,16 +50,30 @@ export default function SocialApp({ inviteCode }: { inviteCode?: string }) {
 
 function SignIn({ error, inviteCode }: { error: string; inviteCode?: string }) {
   const back = inviteCode ? `/invite/${inviteCode}` : "/app";
+  const [app, setApp] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  useEffect(() => { setApp(inDesktop()); }, []);
+  async function minecraft() {
+    setBusy(true); setProblem("");
+    const d = await desktopReady();
+    const r = d ? await d.signInMinecraft() : { error: "The desktop app isn't ready yet - try again" };
+    setBusy(false);
+    if (r.token) { setToken(r.token); location.reload(); } else setProblem(r.error ?? "Sign-in failed");
+  }
   return (
     <div className="center">
       <div className="signin">
         <h1>Jace Social</h1>
         <p className="muted">Friends, chat and servers - with Minecraft built in.</p>
-        {error && <p className="error">{error}</p>}
-        <a className="btn primary" style={{ display: "block", padding: 12, textDecoration: "none", margin: "20px 0 12px" }}
+        {(error || problem) && <p className="error">{problem || error}</p>}
+        <a className="btn primary" style={{ display: "block", padding: 12, textDecoration: "none", margin: "20px 0 10px" }}
           href={`/api/v1/auth/jace?return_to=${encodeURIComponent(back)}`}>Sign in with Jace</a>
-        <p className="muted small">Minecraft player? Sign in to Jace Launcher or the Jace Social desktop app with Minecraft,
-          then use <b>Link Jace</b> so you can sign in here too.</p>
+        {app
+          ? <button className="btn" style={{ display: "block", width: "100%", padding: 12 }} disabled={busy} onClick={minecraft}>
+              {busy ? "Signing in…" : "⛏ Sign in with Minecraft"}</button>
+          : <p className="muted small">Minecraft player? Sign in with Minecraft in Jace Launcher or the Jace Social desktop app,
+              then use <b>Link Jace</b> so you can sign in here too.</p>}
       </div>
     </div>
   );

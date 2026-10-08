@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import {
-  api, desktop, getToken, since, statusLabel, type Me, type Person, type ServerDetail, type Status,
+  api, desktopReady, getToken, inDesktop, since, statusLabel, type Me, type Person, type ServerDetail, type Status,
 } from "@/lib/client";
 import { ActivityCard, Avatar, Modal, PersonRow } from "./ui";
 
@@ -107,7 +107,7 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
   }
 
   async function linkMinecraft() {
-    const d = desktop();
+    const d = await desktopReady();
     if (!d) return;
     setNote("Sign in with Microsoft in the window that opened…");
     const r = await d.linkMinecraft(getToken() ?? "");
@@ -179,7 +179,7 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
             </div>
             <div className="card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1 }}><b>Minecraft</b><div className="muted small">{me.minecraft_linked ? me.minecraft_name : "Not linked"}</div></div>
-              {!me.minecraft_linked && (desktop()
+              {!me.minecraft_linked && (inDesktop()
                 ? <button className="btn primary small" onClick={linkMinecraft}>Link Minecraft</button>
                 : <span className="muted small" style={{ maxWidth: 220 }}>Link in the Jace Social desktop app, or in Jace Launcher (Settings → Link Jace)</span>)}
             </div>

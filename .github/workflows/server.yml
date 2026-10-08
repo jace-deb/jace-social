@@ -1,0 +1,26 @@
+# Typechecks and builds the Jace Social server + web app (Vercel deploys it).
+name: Server
+
+on:
+  push:
+    branches: [main]
+    paths: ["server/**", ".github/workflows/server.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npx next build

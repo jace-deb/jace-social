@@ -1,6 +1,7 @@
-# Jace Social
+# Jace Social server and web app
 
-The server behind Jace Launcher's synced friends list, chat and hosted worlds. The **Jace Friends** mod uses it too. It's a Next.js app on Vercel with a Supabase database.
+The server behind Jace Social: friends, messages, group chats, servers and hosted worlds. It serves the web app at `/app` too.
+Jace Launcher, the desktop app and the Jace Social mod all talk to it. It's a Next.js app on Vercel with a Supabase database.
 
 ## How it works
 
@@ -13,13 +14,16 @@ The server behind Jace Launcher's synced friends list, chat and hosted worlds. T
 
 1. **Supabase:** create a free project at <https://supabase.com>.
    - **Security options when creating the project:** Data API **on**, "Automatically expose new tables" **off**, automatic RLS **on**.
-   - **SQL Editor:** paste and run `supabase/schema.sql`.
+   - **SQL Editor:** run `supabase/schema.sql`, then `supabase/002_calls.sql`, then `supabase/003_social.sql`. 003 adds Jace accounts, profiles, group chats, servers and the `avatars` storage bucket.
    - **Realtime → Settings:** make sure public channel access is allowed (it's the default).
    - **Project Settings → API Keys:** copy the project URL, the **publishable** key and the **secret** key.
-2. **Vercel:** New Project, then import `jace-deb/jace-launcher`.
-   - **Root Directory:** `social`
+2. **Vercel:** New Project, then import `jace-deb/jace-social`.
+   - **Root Directory:** `server`
    - **Project name:** `jace-social` (that gives `https://jace-social.vercel.app`, the address the launcher and mod use).
    - **Environment variables:** `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY` (see `.env.example`).
+   - **Sign in with Jace:** register an app at Jace with this redirect URI:
+     `https://jace-social.vercel.app/api/v1/auth/jace/callback`
+     Then add `JACE_OAUTH_CLIENT_ID` and `JACE_OAUTH_CLIENT_SECRET`.
    - Deploy.
 
 ## API (`/api/v1`, `Authorization: Bearer <token>`)

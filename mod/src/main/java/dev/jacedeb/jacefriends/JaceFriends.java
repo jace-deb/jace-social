@@ -31,6 +31,7 @@ public final class JaceFriends {
 	private static boolean triedSignIn;
 	private static boolean announced;
 	private static Screen lastScreen;
+	private static String activityStarted = java.time.Instant.now().toString();
 
 	private JaceFriends() {}
 
@@ -45,7 +46,7 @@ public final class JaceFriends {
 
 	/**
 	 * Buttons we add to Minecraft's menus: "Friends" on the title and pause screens
-	 * (before 26.2; from 26.2 Minecraft's own Friends button opens Jace Friends instead),
+	 * (before 26.2; from 26.2 Minecraft's own Friends button opens Jace Social instead),
 	 * and "Host world" on the pause screen and, from 26.3, the World Options screen.
 	 */
 	public static List<Button> screenButtons(Screen screen, int width, int height) {
@@ -53,7 +54,7 @@ public final class JaceFriends {
 		boolean menu = screen instanceof TitleScreen || screen instanceof PauseScreen;
 		if (!announced) {                   // one log line (on the first menu) so tests can see the mod is working
 			announced = true;
-			System.out.println("[Jace Friends] " + VERSION + " ready on Minecraft " + Compat.mcVersion());
+			System.out.println("[Jace Social] " + VERSION + " ready on Minecraft " + Compat.mcVersion());
 		}
 		//? if <26.2 {
 		/*if (menu) out.add(Button.builder(Component.literal("Friends"), b -> open(screen)).bounds(width - 86, 6, 80, 20).build());
@@ -86,7 +87,7 @@ public final class JaceFriends {
 	public static void tick(Minecraft mc) {
 		Screen current = Compat.currentScreen();
 		if (Compat.isVanillaFriends(current)) {
-			open(lastScreen);                   // Minecraft's Friends button -> Jace Friends
+			open(lastScreen);                   // Minecraft's Friends button -> Jace Social
 		} else if (!(current instanceof FriendsScreen || current instanceof ChatScreen || current instanceof HostScreen)) {
 			lastScreen = current;
 		}
@@ -108,6 +109,8 @@ public final class JaceFriends {
 		if (++ticks % 100 != 0 && ticks < PRESENCE_EVERY_TICKS) return;   // check every 5 seconds
 		JsonObject activity = activity(mc);
 		String key = activity.toString();
+		if (!key.equals(lastActivity)) activityStarted = java.time.Instant.now().toString();
+		activity.addProperty("started_at", activityStarted);
 		if (key.equals(lastActivity) && ticks < PRESENCE_EVERY_TICKS) return;
 		ticks = 0;
 		lastActivity = key;
@@ -133,6 +136,8 @@ public final class JaceFriends {
 	public static JsonObject activity(Minecraft mc) {
 		JsonObject a = new JsonObject();
 		a.addProperty("version", Compat.mcVersion());
+		a.addProperty("loader", Compat.loaderName());
+		a.addProperty("app", "minecraft");
 		IntegratedServer sp = mc.getSingleplayerServer();
 		if (sp != null && sp.isPublished() && hostingAddress != null) {
 			a.addProperty("type", "hosting");
@@ -141,6 +146,8 @@ public final class JaceFriends {
 		} else if (mc.level != null) {
 			a.addProperty("type", "playing");
 			if (mc.getCurrentServer() != null && !mc.isLocalServer()) a.addProperty("server", mc.getCurrentServer().ip);
+			else if (sp != null) a.addProperty("world", sp.getWorldData().getLevelName());
+			a.addProperty("details", mc.isLocalServer() ? "Singleplayer" : "Multiplayer");
 		} else {
 			a.addProperty("type", "launcher");
 		}
@@ -163,6 +170,14 @@ public final class JaceFriends {
 			} else {
 				Compat.toast("New message", Social.str(p, "name"));
 			}
+		} else if (event.equals("channel") && Social.str(p, "server_id").isEmpty()) {     // group chat
+			String group = Social.str(p, "channel_id");
+			if (screen instanceof ChatScreen chat && chat.isGroup(group)) chat.reload();
+			else if (!p.has("edited") && !p.has("deleted") && !Social.str(p, "name").isEmpty()) {
+				Compat.toast("Group message", Social.str(p, "name"));
+			}
+		} else if (event.equals("groups")) {
+			if (Social.str(p, "kind").equals("added")) Compat.toast("New group chat", Social.str(p, "name"));
 		} else if (event.equals("friends")) {
 			String kind = Social.str(p, "kind");
 			if (kind.equals("request")) Compat.toast("Friend request", Social.str(p, "name") + " wants to be friends");

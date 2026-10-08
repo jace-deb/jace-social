@@ -1,0 +1,10 @@
+# desktop app builds
+app/build/
+app/dist/
+__pycache__/
+*.pyc
+# mod
+mod/.gradle/
+mod/build/
+mod/versions/*/build/
+mod/run/

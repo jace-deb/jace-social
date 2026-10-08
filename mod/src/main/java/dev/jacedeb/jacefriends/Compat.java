@@ -140,7 +140,7 @@ public final class Compat {
 		*///?}
 	}
 
-	/** Minecraft's own Friends screen (26.2+), which we replace with Jace Friends. */
+	/** Minecraft's own Friends screen (26.2+), which we replace with Jace Social. */
 	public static boolean isVanillaFriends(Screen screen) {
 		//? if >=26.2 {
 		return screen instanceof net.minecraft.client.gui.screens.friends.FriendsOverlayScreen;
@@ -155,6 +155,16 @@ public final class Compat {
 		return screen instanceof net.minecraft.client.gui.screens.WorldOptionsScreen;
 		//?} else {
 		/*return false;
+		*///?}
+	}
+
+	public static String loaderName() {
+		//? if fabric {
+		return isModLoaded("quilt_loader") ? "quilt" : "fabric";
+		//?} elif neoforge {
+		/*return "neoforge";
+		*///?} else {
+		/*return "forge";
 		*///?}
 	}
 

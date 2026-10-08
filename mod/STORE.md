@@ -1,4 +1,4 @@
-# Jace Friends
+# Jace Social
 
 Your [Jace Launcher](https://jace-store-deb.vercel.app/project/jace-launcher) friends list and chat, inside Minecraft.
 

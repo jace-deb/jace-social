@@ -141,6 +141,7 @@ export function joinAddress(p: Person): string | null {
 
 /** The desktop app adds this bridge (see app/ in the repo); the web version doesn't have it. */
 export type DesktopBridge = {
+  signInMinecraft(): Promise<{ token?: string; error?: string }>;
   linkMinecraft(token: string): Promise<{ ok?: boolean; error?: string }>;
   notify(title: string, body: string): void;
   setUnread(count: number): void;
@@ -148,4 +149,19 @@ export type DesktopBridge = {
 };
 export function desktop(): DesktopBridge | null {
   return (globalThis as unknown as { jaceDesktop?: DesktopBridge }).jaceDesktop ?? null;
+}
+
+/** True inside the desktop app (even before its bridge has finished connecting). */
+export function inDesktop(): boolean {
+  return !!(globalThis as unknown as { jaceDesktopPending?: boolean }).jaceDesktopPending;
+}
+
+/** Wait for the desktop bridge (it connects a moment after the page loads). */
+export function desktopReady(): Promise<DesktopBridge | null> {
+  if (desktop() || !inDesktop()) return Promise.resolve(desktop());
+  return new Promise((ok) => {
+    const done = () => ok(desktop());
+    window.addEventListener("jacedesktop", done, { once: true });
+    setTimeout(done, 5000);
+  });
 }

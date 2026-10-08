@@ -19,6 +19,7 @@ public class FriendsScreen extends Screen {
 	private static final int ROW = 24;
 	private final Screen parent;
 	private JsonObject data;
+	private JsonArray groups = new JsonArray();
 	private String status = "Loading…";
 	private int page;
 	private EditBox addBox;
@@ -36,12 +37,19 @@ public class FriendsScreen extends Screen {
 	public void reload() {
 		Social.async(() -> {
 			if (!Social.signedIn()) JaceFriends.startLive(Social.signIn());
-			return Social.friends();
+			JsonObject d = Social.friends();
+			try {
+				d.add("groups", Social.groups().getAsJsonArray("groups"));
+			} catch (Exception e) {
+				d.add("groups", new JsonArray());      // older server: no group chats yet
+			}
+			return d;
 		}).whenComplete((d, err) -> Minecraft.getInstance().execute(() -> {
 			if (err != null) {
 				status = cause(err);
 			} else {
 				data = d;
+				groups = d.getAsJsonArray("groups");
 				int online = 0;
 				for (JsonElement e : d.getAsJsonArray("friends")) if (e.getAsJsonObject().get("online").getAsBoolean()) online++;
 				status = "Signed in as " + Minecraft.getInstance().getUser().getName() + " · " + online + " online";
@@ -59,6 +67,7 @@ public class FriendsScreen extends Screen {
 		rows.clear();
 		if (data == null) return;
 		for (JsonElement e : data.getAsJsonArray("incoming")) rows.add(new Row("incoming", e.getAsJsonObject()));
+		for (JsonElement e : groups) rows.add(new Row("group", e.getAsJsonObject()));
 		List<JsonObject> friends = new ArrayList<>();
 		for (JsonElement e : data.getAsJsonArray("friends")) friends.add(e.getAsJsonObject());
 		friends.sort((a, b) -> {
@@ -126,6 +135,10 @@ public class FriendsScreen extends Screen {
 			status = "Loading…";
 			reload();
 		}).bounds(cx + 104, 34, 50, 20).build());
+		if (data != null && !data.getAsJsonArray("friends").isEmpty()) {
+			addRenderableWidget(Button.builder(Component.literal("New group"), b -> Compat.setScreen(new NewGroupScreen(this, data.getAsJsonArray("friends"))))
+					.bounds(cx + 158, 34, 70, 20).build());
+		}
 
 		collectRows();
 		int per = perPage();
@@ -143,6 +156,11 @@ public class FriendsScreen extends Screen {
 				x -= 56;
 				addRenderableWidget(Button.builder(Component.literal("Accept"), b -> act(() -> Social.respond(uuid, true)))
 						.bounds(x, y, 54, 20).build());
+			} else if (r.kind.equals("group")) {
+				int unread = r.f.has("unread") ? r.f.get("unread").getAsInt() : 0;
+				x -= 56;
+				addRenderableWidget(Button.builder(Component.literal(unread > 0 ? "Chat (" + unread + ")" : "Chat"),
+						b -> Compat.setScreen(ChatScreen.group(this, r.f))).bounds(x, y, 56, 20).build());
 			} else if (r.kind.equals("outgoing")) {
 				x -= 56;
 				addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> act(() -> Social.removeFriend(uuid)))
@@ -255,9 +273,19 @@ public class FriendsScreen extends Screen {
 		for (int i = page * per; i < Math.min(rows.size(), (page + 1) * per); i++) {
 			Row r = rows.get(i);
 			JsonObject f = r.f;
+			if (r.kind.equals("group")) {
+				g.fill(left, y + 6, left + 6, y + 12, 0xFF3DDC84);
+				g.text(font, font.plainSubstrByWidth(Social.str(f, "name"), 170), left + 10, y + 1, 0xFFFFFFFF);
+				int n = f.has("members") ? f.getAsJsonArray("members").size() : 0;
+				g.text(font, "Group chat · " + n + " people", left + 10, y + 11, 0xFF8B919C);
+				y += ROW;
+				continue;
+			}
 			boolean online = f.get("online").getAsBoolean();
 			String type = Social.str(Social.activity(f), "type");
-			int dot = !online ? 0xFF6B717C : type.equals("hosting") ? 0xFFB07CF0 : type.equals("playing") ? 0xFF4F8FD6 : 0xFF3DDC84;
+			String st = Social.str(f, "status");
+			int dot = !online ? 0xFF6B717C : type.equals("hosting") ? 0xFFB07CF0 : type.equals("playing") ? 0xFF4F8FD6
+					: st.equals("dnd") ? 0xFFE0605A : st.equals("idle") ? 0xFFE0B44A : 0xFF3DDC84;
 			g.fill(left, y + 6, left + 6, y + 12, r.kind.equals("friend") ? dot : 0xFFE0B44A);
 			g.text(font, Social.str(f, "name"), left + 10, y + 1, 0xFFFFFFFF);
 			String line = switch (r.kind) {

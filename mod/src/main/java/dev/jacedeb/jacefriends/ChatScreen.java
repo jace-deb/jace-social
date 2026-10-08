@@ -10,34 +10,62 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-/** Chat with one friend. */
+/** Chat with one friend, or a group chat (groupId set). */
 public class ChatScreen extends Screen {
 	private final Screen parent;
-	private final JsonObject friend;
-	private final String uuid;
+	private final JsonObject friend;          // direct message: the friend; group chat: the group
+	private final String uuid;                // direct message: friend's id
+	private final String groupId;             // group chat: its id, else null
+	private final Map<String, String> names = new HashMap<>();
 	private final List<JsonObject> messages = new ArrayList<>();
 	private EditBox input;
 	private String draft = "";
 	private String status = "Loading…";
 
 	public ChatScreen(Screen parent, JsonObject friend) {
-		super(Component.literal("Chat with " + Social.str(friend, "name")));
+		this(parent, friend, null);
+	}
+
+	private ChatScreen(Screen parent, JsonObject target, String groupId) {
+		super(Component.literal(groupId == null ? "Chat with " + Social.str(target, "name") : Social.str(target, "name")));
 		this.parent = parent;
-		this.friend = friend;
-		this.uuid = Social.str(friend, "uuid");
+		this.friend = target;
+		this.groupId = groupId;
+		this.uuid = groupId == null ? Social.str(target, "uuid") : "";
+		if (groupId != null && target.has("members")) {
+			for (JsonElement m : target.getAsJsonArray("members")) {
+				names.put(Social.str(m.getAsJsonObject(), "uuid"), Social.str(m.getAsJsonObject(), "name"));
+			}
+		}
 		reload();
 	}
 
+	public static ChatScreen group(Screen parent, JsonObject group) {
+		return new ChatScreen(parent, group, Social.str(group, "id"));
+	}
+
 	public boolean isWith(String other) {
-		return uuid.equals(other);
+		return groupId == null && uuid.equals(other);
+	}
+
+	public boolean isGroup(String id) {
+		return groupId != null && groupId.equals(id);
 	}
 
 	public void reload() {
 		Social.async(() -> {
-			JsonObject r = Social.messages(uuid);
-			Social.markRead(uuid);
+			JsonObject r;
+			if (groupId == null) {
+				r = Social.messages(uuid);
+				Social.markRead(uuid);
+			} else {
+				r = Social.groupMessages(groupId);
+				Social.readGroup(groupId);
+			}
 			return r;
 		}).whenComplete((r, err) -> Minecraft.getInstance().execute(() -> {
 			if (err != null) {
@@ -46,7 +74,12 @@ public class ChatScreen extends Screen {
 			}
 			messages.clear();
 			for (JsonElement e : r.getAsJsonArray("messages")) messages.add(e.getAsJsonObject());
-			status = Social.describe(friend);
+			if (r.has("people") && r.get("people").isJsonObject()) {
+				for (Map.Entry<String, JsonElement> e : r.getAsJsonObject("people").entrySet()) {
+					names.put(e.getKey(), Social.str(e.getValue().getAsJsonObject(), "name"));
+				}
+			}
+			status = groupId == null ? Social.describe(friend) : names.size() + " people";
 		}));
 	}
 
@@ -55,14 +88,16 @@ public class ChatScreen extends Screen {
 		int cx = width / 2;
 		if (input != null) draft = input.getValue();
 		input = new EditBox(font, cx - 160, height - 30, 256, 20, Component.literal("Message"));
-		input.setMaxLength(500);
+		input.setMaxLength(groupId == null ? 500 : 2000);
 		input.setHint(Component.literal("Message " + Social.str(friend, "name") + "…"));
 		input.setValue(draft);
 		addRenderableWidget(input);
 		setInitialFocus(input);
 		addRenderableWidget(Button.builder(Component.literal("Send"), b -> send()).bounds(cx + 100, height - 30, 60, 20).build());
 		addRenderableWidget(Button.builder(Component.literal("< Back"), b -> onClose()).bounds(6, 6, 60, 20).build());
-		addRenderableWidget(Button.builder(Component.literal("Call"), b -> Calls.call(friend, s -> status = s)).bounds(width - 66, 6, 60, 20).build());
+		if (groupId == null) {
+			addRenderableWidget(Button.builder(Component.literal("Call"), b -> Calls.call(friend, s -> status = s)).bounds(width - 66, 6, 60, 20).build());
+		}
 	}
 
 	private void send() {
@@ -70,7 +105,8 @@ public class ChatScreen extends Screen {
 		if (text.isEmpty()) return;
 		input.setValue("");
 		Social.async(() -> {
-			Social.send(uuid, text);
+			if (groupId == null) Social.send(uuid, text);
+			else Social.sendGroup(groupId, text);
 			return null;
 		}).whenComplete((v, err) -> Minecraft.getInstance().execute(() -> {
 			if (err != null) {
@@ -129,11 +165,24 @@ public class ChatScreen extends Screen {
 		// draw newest at the bottom, going up until we run out of room
 		for (int i = messages.size() - 1; i >= 0 && y > top; i--) {
 			JsonObject m = messages.get(i);
-			boolean mine = Social.str(m, "sender").equals(Social.myUuid());
+			String sender = Social.str(m, "sender");
+			boolean system = Social.str(m, "kind").equals("system");
+			boolean mine = sender.equals(Social.myUuid());
 			List<FormattedCharSequence> lines = font.split(Component.literal(Social.str(m, "body")), wrap);
+			if (system) {                                     // "Alex joined the group"
+				y -= lines.size() * 10 + 4;
+				if (y < top) break;
+				int ly = y;
+				for (FormattedCharSequence line : lines) {
+					g.text(font, line, left, ly, 0xFF8B919C);
+					ly += 10;
+				}
+				continue;
+			}
 			y -= lines.size() * 10 + 12;
 			if (y < top) break;
-			g.text(font, mine ? "You" : Social.str(friend, "name"), left, y, mine ? 0xFF3DDC84 : 0xFF4F8FD6);
+			String who = mine ? "You" : groupId == null ? Social.str(friend, "name") : names.getOrDefault(sender, "Someone");
+			g.text(font, who, left, y, mine ? 0xFF3DDC84 : 0xFF4F8FD6);
 			int ly = y + 10;
 			for (FormattedCharSequence line : lines) {
 				g.text(font, line, left, ly, 0xFFE6E8EB);

@@ -1,0 +1,98 @@
+# Builds the Jace Social desktop app for Windows, macOS and Linux.
+# Every push uploads the builds as workflow artifacts; a tag like app-v1.0.0
+# also makes a GitHub Release and lists it on Jace Store.
+name: Desktop app
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/app.yml"]
+    tags: ["app-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: windows }
+          - { os: macos-latest, name: macos-arm64 }
+          - { os: macos-15-intel, name: macos-x86_64 }
+          - { os: ubuntu-22.04, name: linux }      # older glibc = runs on more distros
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libfuse2
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pillow
+      - name: Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - name: Build
+        run: python packaging/build.py
+      - name: Smoke test (start the app headless for 20 seconds)
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          set +e
+          timeout 20 ./dist/JaceSocial-*-x86_64.AppImage --hidden
+          code=$?
+          [ $code -eq 124 ] || { echo "the app exited early ($code)"; exit 1; }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-${{ matrix.name }}
+          path: |
+            app/dist/*.exe
+            app/dist/*.app.zip
+            app/dist/*.AppImage
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/app-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: files
+          merge-multiple: true
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#app-v}"
+          awk -v v="$V" '$0 ~ "^## "v"$" {f=1; next} /^## / {f=0} f' app/CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" files/* --title "Jace Social $V" --notes-file notes.md
+
+  store:
+    if: startsWith(github.ref, 'refs/tags/app-v')
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      JACE_STORE_TOKEN: ${{ secrets.JACE_STORE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish to Jace Store
+        run: |
+          if [ -z "$JACE_STORE_TOKEN" ]; then echo "::warning::JACE_STORE_TOKEN not set"; exit 0; fi
+          python3 packaging/publish_app.py "$GITHUB_REF_NAME"
