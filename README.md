@@ -44,10 +44,26 @@ If both accounts already had friends or chats, linking merges them into one.
 - **Voice calls:** one-to-one with friends, in the web app, the desktop app and Jace Launcher (all can call each other), and controlled from the mod.
 - **Hosted worlds:** host from the mod with roles, plus LuckPerms and WorldEdit permission menus.
 
+## Desktop app
+
+Each download is the app itself: `JaceSocial-<ver>-windows-x64.exe`, `-macos-arm64.app.zip` / `-macos-x86_64.app.zip`, or `-x86_64.AppImage`. The first time it runs, a setup wizard installs it, then starts the installed copy and deletes the download. Setup can't be skipped; cancelling closes the app.
+
+| | Installs to | Options |
+|---|---|---|
+| Windows | `%LOCALAPPDATA%\Programs\Jace Social` (no admin) | Start menu, desktop shortcut, start with Windows, Installed apps entry, `jace-social` command |
+| macOS | `/Applications` or `~/Applications` | Dock, desktop shortcut, open at login, `jace-social` command, remove the quarantine flag |
+| Linux | `~/Applications` | menu entry, desktop shortcut, start at login, `jace-social` command, app center info |
+
+Your sign-in and settings live outside the app folder (`%APPDATA%\Jace Social`, `~/Library/Application Support/Jace Social` or `~/.local/share/jace-social`), so updates and reinstalls keep them. The app isn't signed: on a Mac, right-click → **Open** the first time (macOS 15+: System Settings → Privacy & Security → **Open Anyway**); on Windows, **More info → Run anyway**.
+
+Command line: `--install` (the wizard), `--install --yes` (defaults, no questions), `--uninstall`, `--uninstall --purge` (also your sign-in and settings), `--hidden` (start in the tray), `--help`.
+
+Build it with `python app/packaging/build.py` on Windows or macOS, or `app/packaging/build_appimage.sh` on Linux. PyInstaller can't cross-compile, so releases are built by GitHub Actions.
+
 ## Releases
 
 - **Mod:** `git tag mod-vX.Y.Z && git push origin mod-vX.Y.Z` builds every Minecraft version and publishes it to Jace Store.
-- **Desktop app:** `git tag app-vX.Y.Z && git push origin app-vX.Y.Z` builds every platform, makes a GitHub release and lists it on Jace Store.
+- **Desktop app:** `git tag app-vX.Y.Z && git push origin app-vX.Y.Z` builds every platform, tests that each download installs, updates and uninstalls itself, makes a GitHub release and lists it on Jace Store. Bump `APP_VERSION` in `app/jace_social_app/__init__.py` and add a `## X.Y.Z` section to `app/CHANGELOG.md` first.
 - **Server and web app:** deployed by Vercel on every push to `main` (root directory `server`).
 
 Both release workflows need the `JACE_STORE_TOKEN` repository secret.

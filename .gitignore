@@ -1,6 +1,7 @@
 # desktop app builds
 app/build/
 app/dist/
+app/.venv/
 __pycache__/
 *.pyc
 # mod

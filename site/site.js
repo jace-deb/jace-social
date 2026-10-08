@@ -1,7 +1,7 @@
 // Desktop app download buttons from the latest app release, and the server status.
 const REPO = "jace-deb/jace-social";
 const PLATFORMS = [
-  { id: "windows", suffix: "-windows-x64-setup.exe", label: "Windows", note: "10 / 11" },
+  { id: "windows", suffix: "-windows-x64.exe", label: "Windows", note: "10 / 11" },
   { id: "mac-arm", suffix: "-macos-arm64.app.zip", label: "macOS", note: "Apple Silicon" },
   { id: "mac-intel", suffix: "-macos-x86_64.app.zip", label: "macOS", note: "Intel" },
   { id: "linux", suffix: "-x86_64.AppImage", label: "Linux", note: "AppImage" },

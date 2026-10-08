@@ -18,7 +18,7 @@ CLI = ROOT / "packaging" / "jace-store.mjs"
 REPO = "jace-deb/jace-social"
 SLUG = "jace-social"
 FILES = [   # (file ending, label, Jace Store platform); this order is the order on the store
-    ("-windows-x64-setup.exe", "Windows", "windows"),
+    ("-windows-x64.exe", "Windows", "windows"),
     ("-macos-arm64.app.zip", "macOS (Apple Silicon)", "macos"),
     ("-macos-x86_64.app.zip", "macOS (Intel)", "macos"),
     ("-x86_64.AppImage", "Linux", "linux"),

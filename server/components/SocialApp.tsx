@@ -226,6 +226,7 @@ function Main({ me, setMe, signOut, inviteCode }: {
           </button>
         ))}
         <button className="rail-item rail-add" title="Create or join a server" onClick={() => setModal("server")}>+</button>
+        <UpdateButton />
       </nav>
 
       {/* sidebar */}
@@ -348,6 +349,28 @@ function Main({ me, setMe, signOut, inviteCode }: {
       {toast && <div role="alert" style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#3a2222",
         border: "1px solid #6b3433", padding: "10px 16px", borderRadius: 10, zIndex: 60, maxWidth: "90vw" }}>{toast}</div>}
     </div>
+  );
+}
+
+/** In the desktop app: a green "update" button in the rail when a new version is out. */
+function UpdateButton() {
+  const [latest, setLatest] = useState<string | null>(null);
+  useEffect(() => {
+    let stop = false;
+    const look = async () => {
+      const d = await desktopReady();
+      if (!d?.checkForUpdate || !d.applyUpdate) return;
+      const r = await d.checkForUpdate();
+      if (!stop) setLatest(r.newer && r.latest ? r.latest : null);
+    };
+    const first = setTimeout(look, 20_000);          // the app checks GitHub ~15 s after starting
+    const t = setInterval(look, 3 * 3600_000);
+    return () => { stop = true; clearTimeout(first); clearInterval(t); };
+  }, []);
+  if (!latest) return null;
+  return (
+    <button className="rail-item rail-update" title={`Update to Jace Social ${latest}`} aria-label={`Update to Jace Social ${latest}`}
+      onClick={() => desktop()?.applyUpdate?.()}>⬆</button>
   );
 }
 

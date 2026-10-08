@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import {
-  api, desktop, desktopReady, getToken, inDesktop, since, statusLabel, type Me, type Person, type ServerDetail, type Status,
+  api, desktopReady, getToken, inDesktop, since, statusLabel, type Me, type Person, type ServerDetail, type Status, type DesktopBridge,
 } from "@/lib/client";
 import { ActivityCard, Avatar, Modal, PersonRow } from "./ui";
 
@@ -192,24 +192,26 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
   );
 }
 
-/** The desktop app's version, with a one-click update check. */
+/** The desktop app's version: one-click updates, and deleting the app. */
 function DesktopVersion() {
-  const [version, setVersion] = useState<string | null>(null);
+  const [d, setD] = useState<DesktopBridge | null>(null);
   const [state, setState] = useState<{ busy?: boolean; text?: string; latest?: string }>({});
-  useEffect(() => { void desktopReady().then((d) => { if (d?.checkForUpdate) setVersion(d.version); }); }, []);
-  if (!version) return null;
+  useEffect(() => { void desktopReady().then((b) => { if (b?.checkForUpdate) setD(b); }); }, []);
+  if (!d) return null;
   async function check() {
     setState({ busy: true });
-    const r = await (await desktopReady())!.checkForUpdate!();
+    const r = await d!.checkForUpdate!();
     setState(r.error ? { text: r.error } : r.newer ? { latest: r.latest } : { text: "You're up to date" });
   }
   return (
     <div className="muted small" style={{ padding: "12px 8px 0", display: "grid", gap: 6 }}>
-      <span>Desktop app {version}</span>
-      {state.latest
-        ? <button className="btn primary small" onClick={() => desktop()?.openUpdate?.()}>Download {state.latest}</button>
+      <span>Desktop app {d.version}</span>
+      {state.latest && d.applyUpdate
+        ? <button className="btn primary small" onClick={() => d.applyUpdate!()}>Update to {state.latest}</button>
         : <button className="btn small" disabled={state.busy} onClick={check}>{state.busy ? "Checking…" : "Check for updates"}</button>}
       {state.text && <span>{state.text}</span>}
+      {d.installed && d.deleteApp &&
+        <button className="btn danger small" onClick={() => d.deleteApp!()}>Delete Jace Social…</button>}
     </div>
   );
 }

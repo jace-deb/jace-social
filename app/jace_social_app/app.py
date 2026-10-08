@@ -3,10 +3,12 @@ Microsoft (Minecraft) sign-in, system notifications, a tray icon and an unread b
 import json
 import os
 import sys
+import subprocess
 import threading
+import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Property, QStandardPaths, Qt, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebChannel import QWebChannel
@@ -15,18 +17,13 @@ from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEnginePermission, QWebE
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QDialog, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout
 
-from jace_social_app import APP_NAME, APP_VERSION, minecraft, updates
+from jace_social_app import APP_ID, APP_NAME, APP_VERSION, DATA_DIR, desktop, macinstall, minecraft, updater, wininstall
+from jace_social_app.installer import SetupWizard, confirm_uninstall, run_windows_update, update_app
 
 BASE = os.environ.get("JACE_SOCIAL_URL", "https://jace-social.vercel.app").rstrip("/")
 # pages that open inside the app; everything else goes to your normal browser
 IN_APP_HOSTS = {QUrl(BASE).host(), "jaceo.vercel.app"}
-ASSETS = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent)) / "assets"
-
-
-def data_dir() -> Path:
-    p = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)) / "jace-social"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+ASSETS = desktop.ASSETS
 
 
 # JavaScript put into every page: window.jaceDesktop, backed by the Python Bridge below.
@@ -47,8 +44,10 @@ BRIDGE_JS = """
       linkMinecraft: function (token) { return call("linkMinecraft", token); },
       notify: function (title, body) { b.notify(String(title), String(body)); },
       setUnread: function (n) { b.setUnread(Number(n) || 0); },
+      installed: b.installed,
       checkForUpdate: function () { return call("checkForUpdate"); },
-      openUpdate: function () { b.openUpdate(); },
+      applyUpdate: function () { b.applyUpdate(); },
+      deleteApp: function () { b.deleteApp(); },
     };
     window.dispatchEvent(new Event("jacedesktop"));
   });
@@ -105,6 +104,11 @@ class Bridge(QObject):
     def version(self):
         return APP_VERSION
 
+    @Property(bool, constant=True)
+    def installed(self):
+        """Running a packaged build (it can update and delete itself), not from source."""
+        return desktop.frozen()
+
     def _microsoft(self, rid: int, finish):
         """Show Microsoft sign-in, then run finish(account) off the UI thread and reply."""
         dlg = MicrosoftLogin(self.window)
@@ -144,8 +148,12 @@ class Bridge(QObject):
         self.window.check_for_update(lambda r: self.reply.emit(rid, json.dumps(r)))
 
     @Slot()
-    def openUpdate(self):
-        self.window.open_update()
+    def applyUpdate(self):
+        self.window.apply_update()
+
+    @Slot()
+    def deleteApp(self):
+        self.window.delete_app()
 
 
 class Page(QWebEnginePage):
@@ -178,7 +186,7 @@ class Page(QWebEnginePage):
 class Window(QMainWindow):
     update_ready = Signal(dict, object)           # update check result, and what to do with it
 
-    def __init__(self):
+    def __init__(self, url: str = BASE + "/app"):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.resize(1200, 780)
@@ -189,8 +197,8 @@ class Window(QMainWindow):
 
         # a saved browser profile, so you stay signed in
         self.profile = QWebEngineProfile("jace-social", self)
-        self.profile.setPersistentStoragePath(str(data_dir() / "web"))
-        self.profile.setCachePath(str(data_dir() / "cache"))
+        self.profile.setPersistentStoragePath(str(DATA_DIR / "web"))
+        self.profile.setCachePath(str(DATA_DIR / "cache"))
         self.profile.setHttpUserAgent(self.profile.httpUserAgent() + f" JaceSocialDesktop/{APP_VERSION}")
         self.page = Page(self.profile, self)
         self.page.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, True)
@@ -213,7 +221,7 @@ class Window(QMainWindow):
         self.view.setPage(self.page)
         self.view.loadFinished.connect(self._loaded)
         self.setCentralWidget(self.view)
-        self.view.setUrl(QUrl(BASE + "/app"))
+        self.view.setUrl(QUrl(url))
 
         self.tray = None
         if QSystemTrayIcon.isSystemTrayAvailable():
@@ -223,7 +231,7 @@ class Window(QMainWindow):
             show = QAction("Open Jace Social", menu)
             show.triggered.connect(self.bring_up)
             update = QAction("Check for updates", menu)
-            update.triggered.connect(lambda: self.check_for_update(self._update_dialog))
+            update.triggered.connect(lambda: self.check_for_update(self._update_dialog, fresh=True))
             quit_ = QAction("Quit", menu)
             quit_.triggered.connect(self.quit)
             menu.addAction(show)
@@ -237,28 +245,50 @@ class Window(QMainWindow):
             self.tray.show()
 
         # look for a new version a little after starting, and tell once
-        self.update = None
+        self.update = None              # updater.check() result when a newer version is out
+        self._checked = 0.0
         self.update_ready.connect(lambda r, cb: cb(r))
         QTimer.singleShot(15_000, lambda: self.check_for_update(self._update_notice))
 
-    def check_for_update(self, done):
-        """Ask GitHub off the UI thread; done(result) runs on the UI thread."""
+    def check_for_update(self, done, fresh=False):
+        """Ask GitHub off the UI thread (at most every 10 minutes unless fresh);
+        done({current, latest, newer} or {error}) runs on the UI thread."""
+        def result():
+            u = self.update
+            return {"current": APP_VERSION, "latest": u["version"] if u else APP_VERSION, "newer": bool(u)}
+        if not fresh and time.monotonic() - self._checked < 600:
+            done(result())
+            return
+
         def work():
             try:
-                r = updates.check()
-                self.update = r if r["newer"] else None
+                self.update = updater.check()
+                self._checked = time.monotonic()
+                r = result()
             except Exception:  # noqa: BLE001 - offline, rate limited, ...
                 r = {"error": "Couldn't check for updates - try again later", "current": APP_VERSION}
             self.update_ready.emit(r, done)
         threading.Thread(target=work, daemon=True).start()
 
-    def open_update(self):
-        if self.update:
-            QDesktopServices.openUrl(QUrl(self.update["url"]))
+    def apply_update(self):
+        """Download the new version, swap it in and restart (asks first when it can't)."""
+        if not self.update:
+            return
+        why = updater.unsupported_reason()
+        if why:
+            QMessageBox.information(self, APP_NAME, f"{why}\n\nYou can also download it from the website.")
+            QDesktopServices.openUrl(QUrl(self.update.get("page") or updater.RELEASES))
+            return
+        if update_app(self.update, self):
+            self.quit()
+
+    def delete_app(self):
+        if confirm_uninstall(self):
+            self.quit()
 
     def _update_notice(self, r: dict):
         if r.get("newer") and self.tray:
-            self.tray.showMessage(APP_NAME, f"Jace Social {r['latest']} is out. Right-click the tray icon → Check for updates.",
+            self.tray.showMessage(APP_NAME, f"{APP_NAME} {r['latest']} is out. Click Update in the app to get it.",
                                   self.windowIcon(), 8000)
 
     def _update_dialog(self, r: dict):
@@ -266,9 +296,10 @@ class Window(QMainWindow):
             QMessageBox.warning(self, APP_NAME, r["error"])
         elif not r["newer"]:
             QMessageBox.information(self, APP_NAME, f"You have the newest version ({APP_VERSION}).")
-        elif QMessageBox.question(self, APP_NAME, f"Jace Social {r['latest']} is out (you have {APP_VERSION}).\n\nDownload it now?") \
+        elif QMessageBox.question(self, APP_NAME, f"{APP_NAME} {r['latest']} is out (you have {APP_VERSION}).\n\n"
+                                  "Update now? It takes a minute, then the app restarts.") \
                 == QMessageBox.StandardButton.Yes:
-            self.open_update()
+            self.apply_update()
 
     def _loaded(self, ok: bool):
         if not ok:
@@ -321,15 +352,106 @@ def _qwebchannel_js() -> str:
     raise RuntimeError("qwebchannel.js is missing from this Qt build")
 
 
+def self_test(app) -> int:
+    """Used by CI on packaged builds: prove the bundle starts (Qt, WebEngine, the bridge
+    script and the bundled assets), then exit. Exit code 0 = OK."""
+    results = []
+    try:
+        assert desktop.ICON_SRC.is_file(), f"missing icon {desktop.ICON_SRC}"
+        assert _qwebchannel_js(), "qwebchannel.js missing"
+        w = Window(url="about:blank")
+        w.show()
+        for _ in range(20):
+            app.processEvents()
+            time.sleep(0.05)
+        w.quitting = True
+        w.close()
+        results.append(f"{APP_NAME} {APP_VERSION}")
+        results.append("SELF-TEST OK")
+        code = 0
+    except Exception as e:  # noqa: BLE001
+        results.append(f"SELF-TEST FAILED: {e!r}")
+        code = 1
+    out = os.environ.get("JACE_SELF_TEST_OUT")
+    if out:  # windowed Windows builds have no stdout, so CI reads this file
+        with open(out, "w") as f:
+            f.write("\n".join(results))
+    print("\n".join(results))
+    return code
+
+
+def should_run_setup(argv) -> bool:
+    if "--install" in argv:
+        return True
+    # the downloaded AppImage / .app / .exe must be installed before it can be used
+    return bool(desktop.setup_available() and not desktop.running_installed_copy())
+
+
+def start_installed(installed: Path):
+    """Start the freshly installed copy and remove the downloaded one."""
+    if macinstall.running_bundle():
+        macinstall.relaunch_installed(installed, macinstall.running_bundle())
+    elif wininstall.running_exe():
+        wininstall.relaunch(installed, delete_after=wininstall.running_exe())
+    else:
+        subprocess.Popen([str(installed)], start_new_session=True, env=updater.clean_env())
+        downloaded = desktop.running_appimage()
+        if downloaded and downloaded.resolve() != installed.resolve():
+            downloaded.unlink(missing_ok=True)   # fine on Linux: the running image stays mounted
+
+
+def close_splash():
+    """Close the PyInstaller splash screen (only the Windows download has one)."""
+    if "_PYI_SPLASH_IPC" not in os.environ:
+        return
+    try:
+        import pyi_splash
+        pyi_splash.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main():
+    close_splash()
+    argv = sys.argv[1:]
+    if desktop.handle_cli(argv):
+        return
     QApplication.setApplicationName("jace-social")
     QApplication.setApplicationDisplayName(APP_NAME)
     QApplication.setOrganizationName("jace-social")
+    QApplication.setDesktopFileName(APP_ID)
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    app.setWindowIcon(QIcon(str(desktop.ICON_SRC)))
+    if "--self-test" in argv:
+        sys.exit(self_test(app))
+    if "--uninstall-gui" in argv:
+        confirm_uninstall()
+        return
+    if "--apply-update" in argv:
+        run_windows_update(argv)
+        return
+    if should_run_setup(argv):
+        wiz = SetupWizard()
+        if wiz.exec() != QDialog.DialogCode.Accepted:
+            return                       # setup cancelled: nothing runs uninstalled
+        installed = desktop.installed_path()
+        if installed and not desktop.running_installed_copy():
+            # we're the download: start the installed app (if asked) and quit
+            if wiz.launch_after():
+                start_installed(installed)
+            elif desktop.running_appimage():
+                desktop.running_appimage().unlink(missing_ok=True)
+            elif wininstall.is_setup_build():
+                wininstall.after_exit(f'del /f /q "{wininstall.running_exe()}"')
+            return
+        if not wiz.launch_after():
+            return
     app.setQuitOnLastWindowClosed(False)
 
-    # one copy at a time: a second launch just brings the first window up
-    key = "jace-social-desktop"
+    # one copy at a time: a second launch brings the first window up, and setup or an
+    # update asks it to quit (see desktop.ask_running_copy_to_quit)
+    key = desktop.SINGLE_INSTANCE_KEY
     probe = QLocalSocket()
     probe.connectToServer(key)
     if probe.waitForConnected(300):
@@ -345,7 +467,21 @@ def main():
     except Exception as e:  # noqa: BLE001
         QMessageBox.critical(None, APP_NAME, f"Jace Social couldn't start:\n{e}")
         raise
-    server.newConnection.connect(lambda: (server.nextPendingConnection(), win.bring_up()))
-    if "--hidden" not in sys.argv:
+
+    def connected():
+        sock = server.nextPendingConnection()
+        if sock is None:
+            return
+
+        def got():
+            if bytes(sock.readAll()).startswith(b"quit"):
+                win.quit()
+            else:
+                win.bring_up()
+        sock.readyRead.connect(got)
+        if sock.bytesAvailable():
+            got()
+    server.newConnection.connect(connected)
+    if "--hidden" not in argv:
         win.show()
     sys.exit(app.exec())

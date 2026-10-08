@@ -1,6 +1,7 @@
-# Builds the Jace Social desktop app for Windows, macOS and Linux.
-# Every push uploads the builds as workflow artifacts; a tag like app-v1.0.0
-# also makes a GitHub Release and lists it on Jace Store.
+# Builds the Jace Social desktop app for Windows, macOS and Linux, then tests that each
+# download installs itself, updates and uninstalls. Every push uploads the builds as
+# workflow artifacts; a tag like app-v1.0.0 also makes a GitHub Release (notes from
+# app/CHANGELOG.md) and lists it on Jace Store.
 name: Desktop app
 
 on:
@@ -14,16 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: windows-latest, name: windows }
-          - { os: macos-latest, name: macos-arm64 }
-          - { os: macos-15-intel, name: macos-x86_64 }
-          - { os: ubuntu-22.04, name: linux }      # older glibc = runs on more distros
-    runs-on: ${{ matrix.os }}
+  windows:
+    runs-on: windows-latest
     timeout-minutes: 40
     defaults:
       run:
@@ -33,40 +26,254 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Linux libraries
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libfuse2
-      - name: Install
+      - name: Install dependencies
+        # requirements.txt pins PySide6 below 6.10: 6.10+ needs icuuc.dll, which Wine
+        # (Bottles, Lutris, Soda) doesn't have
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pillow
-      - name: Inno Setup
-        if: runner.os == 'Windows'
-        run: choco install innosetup --no-progress -y
-      - name: Build
+      - name: Build .exe
         run: python packaging/build.py
-      - name: Smoke test (start the app headless for 20 seconds)
-        if: runner.os == 'Linux'
+      - name: Test the Windows installer, update and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:JACE_SOCIAL_HOME = "$env:RUNNER_TEMP\jace-social-home"
+          $setup = (Get-ChildItem dist\*.exe)[0].FullName
+          function Run($exe, $argList) {
+            $p = Start-Process -FilePath $exe -ArgumentList $argList -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "$exe $argList exited with $($p.ExitCode)" }
+          }
+          # 1. install from the downloaded .exe
+          Run $setup "--install --yes"
+          $dir = "$env:LOCALAPPDATA\Programs\Jace Social"
+          $exe = "$dir\JaceSocial.exe"
+          if (!(Test-Path $exe)) { throw "not installed" }
+          if (!(Test-Path "$dir\_internal")) { throw "_internal missing" }
+          foreach ($dll in "vcruntime140.dll","vcruntime140_1.dll","msvcp140.dll","msvcp140_1.dll","msvcp140_2.dll","concrt140.dll") {
+            if (!(Test-Path "$dir\_internal\$dll")) { throw "VC++ runtime $dll not bundled" }
+          }
+          $sm = [Environment]::GetFolderPath("Programs") + "\Jace Social.lnk"
+          $dt = [Environment]::GetFolderPath("Desktop") + "\Jace Social.lnk"
+          if (!(Test-Path $sm)) { throw "Start menu shortcut missing" }
+          if (!(Test-Path $dt)) { throw "desktop shortcut missing" }
+          $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JaceSocial"
+          if (!(Test-Path $key)) { throw "Installed apps entry missing" }
+          Get-ItemProperty $key | Select-Object DisplayName, DisplayVersion, UninstallString | Format-List
+          $run = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+          if (!(Get-ItemProperty $run -Name "Jace Social" -ErrorAction SilentlyContinue)) { throw "startup entry missing" }
+          # 2. the installed copy (fast onedir launcher) really starts
+          $env:JACE_SELF_TEST_OUT = "$env:RUNNER_TEMP\selftest.txt"
+          Run $exe "--self-test"
+          Get-Content $env:JACE_SELF_TEST_OUT
+          # 3. update step: the new .exe installs itself over the existing copy
+          Run $setup "--apply-update `"$dir`" --no-gui --no-relaunch"
+          Run $exe "--self-test"
+          Get-Content $env:JACE_SELF_TEST_OUT
+          # 4. uninstall removes everything
+          Run $exe "--uninstall"
+          Start-Sleep -Seconds 8
+          if (Test-Path $dir) { throw "install folder left behind" }
+          if (Test-Path $sm) { throw "Start menu shortcut left behind" }
+          if (Test-Path $dt) { throw "desktop shortcut left behind" }
+          if (Test-Path $key) { throw "Installed apps entry left behind" }
+          if (Get-ItemProperty $run -Name "Jace Social" -ErrorAction SilentlyContinue) { throw "startup entry left behind" }
+          "WINDOWS INSTALLER OK"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-windows
+          path: app/dist/*.exe
+          if-no-files-found: error
+
+  wine:
+    # Run the Windows .exe under Bottles' "Soda" Wine runner, like Linux users do
+    needs: windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-windows
+          path: win
+      - name: Get Soda (Bottles' Wine runner)
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb libgnutls30t64 libfreetype6 libfontconfig1
+          gh release download soda-11.0-25-experimental -R bottlesdevs/wine -p "*x86_64.tar.xz"
+          tar xf soda-*.tar.xz
+      - name: Self-test under Wine
+        run: |
+          export PATH="$PWD/$(ls -d soda-*/ | head -1)bin:$PATH" WINEPREFIX="$RUNNER_TEMP/prefix" WINEDEBUG=err+module
+          xvfb-run -a wineboot -i
+          QT_QPA_PLATFORM=offscreen JACE_SELF_TEST_OUT='C:\selftest.txt' timeout 600 xvfb-run -a wine win/*.exe --self-test || true
+          cat "$WINEPREFIX/drive_c/selftest.txt"
+          grep -q "SELF-TEST OK" "$WINEPREFIX/drive_c/selftest.txt"
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest       # Apple Silicon (arm64)
+            arch: arm64
+          - runner: macos-15-intel     # Intel (x86_64)
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        # requirements.txt pins PySide6 below 6.10, which needs macOS 13; 6.9 keeps macOS 12 working
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pillow
+      - name: Build .app
+        run: python packaging/build.py
+      - name: Smoke test (start the packaged app headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          JACE_SOCIAL_HOME: ${{ runner.temp }}/jace-social-home
+        run: '"build/darwin/dist/Jace Social.app/Contents/MacOS/Jace Social" --self-test'
+      - name: Check it still supports macOS 12 Monterey
+        run: |
+          MIN=$(/usr/libexec/PlistBuddy -c "Print LSMinimumSystemVersion" "build/darwin/dist/Jace Social.app/Contents/Info.plist")
+          echo "LSMinimumSystemVersion = $MIN"
+          [ "${MIN%%.*}" -le 12 ] || { echo "::error::Build needs macOS $MIN; must run on macOS 12"; exit 1; }
+      - name: Test the Mac installer (install from a downloaded .app, then uninstall)
+        env:
+          JACE_SOCIAL_HOME: ${{ runner.temp }}/jace-social-home-install
+        run: |
+          set -x
+          DL="$RUNNER_TEMP/Downloads"
+          mkdir -p "$DL"
+          # unzip like Safari does, and mark it as downloaded from the internet
+          ditto -x -k dist/*.app.zip "$DL"
+          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" "$DL/Jace Social.app"
+          "$DL/Jace Social.app/Contents/MacOS/Jace Social" --install --yes
+          APP="/Applications/Jace Social.app"
+          test -d "$APP"
+          test -L "$HOME/Desktop/Jace Social"
+          test -f "$HOME/Library/LaunchAgents/io.github.jace_deb.JaceSocial.plist"
+          defaults read com.apple.dock persistent-apps | grep -q "Jace%20Social.app"
+          if xattr -r "$APP" | grep -q com.apple.quarantine; then echo "::error::app still quarantined"; exit 1; fi
+          QT_QPA_PLATFORM=offscreen "$APP/Contents/MacOS/Jace Social" --self-test
+          "$APP/Contents/MacOS/Jace Social" --uninstall
+          sleep 5
+          test ! -e "$APP"
+          test ! -e "$HOME/Desktop/Jace Social"
+          test ! -e "$HOME/Library/LaunchAgents/io.github.jace_deb.JaceSocial.plist"
+          if defaults read com.apple.dock persistent-apps | grep -q "Jace%20Social.app"; then echo "::error::Dock icon left behind"; exit 1; fi
+          echo "MAC INSTALLER OK"
+      - name: Test a real update (pretend to be 0.0.1, update from the latest release)
+        env:
+          JACE_SOCIAL_HOME: ${{ runner.temp }}/jace-social-home-update
+          JACE_FAKE_VERSION: "0.0.1"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST=$(gh release list -R "${{ github.repository }}" --exclude-drafts --exclude-pre-releases --json tagName \
+                   --jq '[.[] | select(.tagName | startswith("app-v"))][0].tagName // ""' | sed 's/^app-v//')
+          if [ -z "$LATEST" ]; then echo "No desktop app release yet - nothing to update from"; exit 0; fi
+          set -x
+          ditto -x -k dist/*.app.zip /Applications
+          APP="/Applications/Jace Social.app"
+          "$APP/Contents/MacOS/Jace Social" --install --yes
+          "$APP/Contents/MacOS/Jace Social" --update --yes --no-relaunch
+          for i in $(seq 1 30); do
+            V=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist" 2>/dev/null || true)
+            [ "$V" = "$LATEST" ] && [ -x "$APP/Contents/MacOS/Jace Social" ] && [ ! -e "$APP.new" ] && break; sleep 2
+          done
+          echo "installed version now: $V (latest release: $LATEST)"
+          [ "$V" = "$LATEST" ]
+          QT_QPA_PLATFORM=offscreen "$APP/Contents/MacOS/Jace Social" --self-test
+          echo "MAC UPDATE OK"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-macos-${{ matrix.arch }}
+          path: app/dist/*.app.zip
+          if-no-files-found: error
+
+  linux:
+    # older Ubuntu = older glibc = the AppImage runs on more distros
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libfuse2 desktop-file-utils xdg-user-dirs
+      - name: Create virtualenv
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt pyinstaller
+      - name: Build AppImage
+        run: ./packaging/build_appimage.sh
+      - name: Smoke test (start the packaged app headless)
         env:
           QT_QPA_PLATFORM: offscreen
           APPIMAGE_EXTRACT_AND_RUN: "1"
+          JACE_SOCIAL_HOME: ${{ runner.temp }}/jace-social-home
+        run: ./dist/JaceSocial-*-x86_64.AppImage --self-test
+      - name: Test the Linux installer, update and uninstall
+        env:
+          QT_QPA_PLATFORM: offscreen
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set +e
-          timeout 20 ./dist/JaceSocial-*-x86_64.AppImage --hidden
-          code=$?
-          [ $code -eq 124 ] || { echo "the app exited early ($code)"; exit 1; }
+          set -x
+          export HOME="$RUNNER_TEMP/home" XDG_DATA_HOME= XDG_CONFIG_HOME=
+          mkdir -p "$HOME/Downloads" "$HOME/Desktop"
+          DL="$HOME/Downloads/$(basename dist/*.AppImage)"
+          cp dist/*.AppImage "$DL"
+          "$DL" --install --yes
+          APP="$HOME/Applications/JaceSocial.AppImage"
+          ID=io.github.jace_deb.JaceSocial
+          test -x "$APP"
+          test -f "$HOME/.local/share/applications/$ID.desktop"
+          test -f "$HOME/Desktop/$ID.desktop"
+          test -f "$HOME/.config/autostart/$ID.desktop"
+          test -f "$HOME/.local/share/metainfo/$ID.metainfo.xml"
+          test -L "$HOME/.local/bin/jace-social"
+          desktop-file-validate "$HOME/.local/share/applications/$ID.desktop"
+          "$APP" --self-test
+          LATEST=$(gh release list -R "${{ github.repository }}" --exclude-drafts --exclude-pre-releases --json tagName \
+                   --jq '[.[] | select(.tagName | startswith("app-v"))][0].tagName // ""' | sed 's/^app-v//')
+          if [ -n "$LATEST" ]; then
+            JACE_FAKE_VERSION=0.0.1 "$APP" --update --yes --no-relaunch
+            "$APP" --help | head -1 | grep -q "$LATEST"
+            echo "LINUX UPDATE OK"
+          fi
+          "$APP" --uninstall --purge
+          test ! -e "$APP"
+          test ! -e "$HOME/.local/share/applications/$ID.desktop"
+          test ! -e "$HOME/Desktop/$ID.desktop"
+          test ! -e "$HOME/.config/autostart/$ID.desktop"
+          test ! -e "$HOME/.local/bin/jace-social"
+          echo "LINUX INSTALLER OK"
       - uses: actions/upload-artifact@v7
         with:
-          name: app-${{ matrix.name }}
-          path: |
-            app/dist/*.exe
-            app/dist/*.app.zip
-            app/dist/*.AppImage
+          name: app-linux
+          path: app/dist/*.AppImage
           if-no-files-found: error
 
   release:
     if: startsWith(github.ref, 'refs/tags/app-v')
-    needs: build
+    needs: [windows, wine, macos, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write

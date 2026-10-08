@@ -139,6 +139,8 @@ export function joinAddress(p: Person): string | null {
   return null;
 }
 
+export type UpdateCheck = { current: string; latest?: string; newer?: boolean; error?: string };
+
 /** The desktop app adds this bridge (see app/ in the repo); the web version doesn't have it. */
 export type DesktopBridge = {
   signInMinecraft(): Promise<{ token?: string; error?: string }>;
@@ -146,9 +148,13 @@ export type DesktopBridge = {
   notify(title: string, body: string): void;
   setUnread(count: number): void;
   version: string;
-  /** Older desktop builds don't have these. */
-  checkForUpdate?(): Promise<{ current: string; latest?: string; newer?: boolean; error?: string }>;
-  openUpdate?(): void;
+  /** True for a packaged (installed) build, which can update and delete itself. */
+  installed?: boolean;
+  checkForUpdate?(): Promise<UpdateCheck>;
+  /** Downloads the new version, swaps it in and restarts the app. */
+  applyUpdate?(): void;
+  /** Asks, then uninstalls the desktop app. */
+  deleteApp?(): void;
 };
 export function desktop(): DesktopBridge | null {
   return (globalThis as unknown as { jaceDesktop?: DesktopBridge }).jaceDesktop ?? null;
