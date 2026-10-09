@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Jace Social"
-APP_VERSION = "1.0.1"
-APP_RELEASE_DATE = "2026-10-08"
+APP_VERSION = "1.0.2"
+APP_RELEASE_DATE = "2026-10-09"
 APP_ID = "io.github.jace_deb.JaceSocial"
 AUTHOR = "jace.deb"
 GITHUB_REPO = "jace-deb/jace-social"

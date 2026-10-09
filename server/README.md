@@ -15,7 +15,7 @@ Jace Launcher, the desktop app and the Jace Social mod all talk to it. It's a Ne
 
 1. **Supabase:** create a free project at <https://supabase.com>.
    - **Security options when creating the project:** Data API **on**, "Automatically expose new tables" **off**, automatic RLS **on**.
-   - **SQL Editor:** run `supabase/schema.sql`, then `supabase/002_calls.sql`, then `supabase/003_social.sql`. 003 adds Jace accounts, profiles, group chats, servers and the `avatars` storage bucket.
+   - **SQL Editor:** run `supabase/schema.sql`, then `supabase/002_calls.sql`, then `supabase/003_social.sql`, then `supabase/004_community.sql`. 003 adds Jace accounts, profiles, group chats, servers and the `avatars` storage bucket. 004 adds roles and permissions, replies, reactions, files (the `attachments` bucket), moderation, custom invite links, onboarding, voice channels and bots. Each file is safe to run again.
    - **Realtime → Settings:** make sure public channel access is allowed (it's the default).
    - **Project Settings → API Keys:** copy the project URL, the **publishable** key and the **secret** key.
 2. **Vercel:** New Project, then import `jace-deb/jace-social`.
@@ -50,9 +50,27 @@ Jace Launcher, the desktop app and the Jace Social mod all talk to it. It's a Ne
 | GET | `calls?id=` | read a call signal sent to you (the live `call` event carries its id) |
 | GET | `calls/ice` | STUN/TURN servers for calls |
 
+## Servers, bots and the rest (`004_community.sql`)
+
+| Area | Endpoints |
+|---|---|
+| Permissions | Bits in `lib/permbits.ts`. `GET servers/{id}` returns your permissions, roles, channels (each with your permissions there), members, voice rooms and onboarding |
+| Roles | `POST/PUT servers/{id}/roles`, `PATCH/DELETE servers/{id}/roles/{roleId}`, `PATCH servers/{id}/members {uuid, roles, nickname, timeout_until}` |
+| Channels | `POST/PUT servers/{id}/channels` (text, voice, announcement, category), `PATCH/DELETE channels/{id}`, `PUT/DELETE channels/{id}/overrides` |
+| Moderation | `DELETE servers/{id}/members?uuid=` (kick), `GET/POST/DELETE servers/{id}/bans` |
+| Messages | `POST channels/{id}/messages {body, reply_to, attachments}`, the same on `messages` for DMs; `POST/DELETE reactions {scope: c/d, message_id, emoji}`; `PUT/DELETE messages/{id}/pin`; `POST channels/{id}/typing`; `POST uploads` (a signed upload URL, 10 MB) |
+| Invites | `GET/POST invites/{code}` (an invite code or a custom link); the page at `/{code}` offers the desktop app (`jacesocial://invite/{code}`) or the browser |
+| Onboarding | `POST servers/{id}/onboarding {answers, agreed}`; your own: `PATCH me {onboarded: true, settings}` |
+| Voice rooms | `GET/POST channels/{id}/voice {action: join/leave/state}`, `POST/GET voice/signal` (a mesh; each pair has its own connection) |
+| Bots | `GET/POST bots`, `GET/PATCH/DELETE bots/{id}`, `POST bots/{id}/token`, `POST bots/{id}/session`, `PUT bots/{id}/program`, `GET bots/directory`, `POST servers/{id}/bots`, `GET/POST channels/{id}/commands` |
+
+**Bots** use the same API with `Authorization: Bearer <bot token>` and get live events on their own Realtime channel (`GET /me`), plus `command` when someone uses one of their slash commands. **Block bots** are run by the server (`lib/blocks.ts`) when someone sends a message, uses a command or joins, with limits: 500 steps, 5 messages and 4 seconds of waiting per event. The official **Jace** bot (`lib/bots.ts`) is built in.
+
+**Link previews** are fetched by the server after a message is sent (so people's IP addresses don't go to every linked site). Private and local addresses are never fetched.
+
 ## Voice calls
 
-Calls work in the web app, the desktop app and Jace Launcher, and any of them can call any other (the Jace Social mod controls calls through the launcher). The web app uses the browser's WebRTC (`lib/calls.ts`), the launcher uses aiortc; both send a full description once ICE gathering finishes, with no trickle. Audio goes straight between the two players. When a direct connection isn't possible, it goes through Cloudflare's free TURN relay.
+One-to-one calls work in the web app, the desktop app and Jace Launcher, and any of them can call any other (the Jace Social mod controls calls through the launcher). The web app uses the browser's WebRTC (`lib/calls.ts`), the launcher uses aiortc; both send a full description once ICE gathering finishes, with no trickle. Audio goes straight between the two players. When a direct connection isn't possible, it goes through Cloudflare's free TURN relay.
 
 Setup:
 1. In Supabase's **SQL Editor**, run `supabase/002_calls.sql`.

@@ -2,7 +2,7 @@
 //   and the messages replied to
 // POST {to, body, reply_to?, attachments?}: send a message to a friend
 import { ApiError, areFriends, body, cleanUuid, db, handler, me, notify } from "@/lib/server";
-import { embedsFor } from "@/lib/embeds";
+import { previewLater } from "@/lib/embeds";
 import { reactionsFor, repliedTo } from "@/lib/reactions";
 import { cleanAttachments } from "@/lib/uploads";
 
@@ -48,10 +48,13 @@ export const POST = handler(async (req) => {
     replyTo = parent.id;
   }
   const { data, error } = await db().from("messages")
-    .insert({ sender: p.uuid, recipient: to, body: text, reply_to: replyTo, attachments, embeds: await embedsFor(text) })
+    .insert({ sender: p.uuid, recipient: to, body: text, reply_to: replyTo, attachments })
     .select(DM_COLUMNS).single();
   if (error) throw error;
   const { data: o } = await db().from("profiles").select("inbox").eq("uuid", to).single();
   if (o) await notify([o.inbox], "message", { from: p.uuid, name: p.name, id: data.id });
+  previewLater("messages", data.id, text, async () => {
+    await notify([o?.inbox, p.inbox].filter(Boolean) as string[], "dm_update", { from: p.uuid, with: to, id: data.id, edited: true });
+  });
   return { message: data };
 });

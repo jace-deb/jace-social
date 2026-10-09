@@ -2,7 +2,7 @@
 // a group chat is one channel with its own member list (server_id null), and a
 // server has several channels that every member of the server can read.
 import { randomBytes } from "node:crypto";
-import { embedsFor, type Embed } from "./embeds";
+import { previewLater, type Embed } from "./embeds";
 import { channelPerms, has, overridesFor, P, permsIn, serverCtx, type ServerCtx } from "./perms";
 import { ApiError, db, inboxesOf, me, notify, publicProfile, type Profile } from "./server";
 
@@ -151,7 +151,7 @@ export async function postMessage(channel: Channel, members: string[], sender: P
   const mentions = kind === "text" && sender
     ? await parseMentions(body, channel, members, extras.perms ?? 0)
     : { mentions: [], mention_roles: [], mention_everyone: false, notify: [] as string[] };
-  const embeds = extras.embeds ?? (kind === "text" ? await embedsFor(body) : []);
+  const embeds = extras.embeds ?? [];          // link previews are added after sending (previewLater below)
   if (extras.reply_to) {
     const { data: parent } = await db().from("channel_messages").select("id, channel_id, sender").eq("id", extras.reply_to).maybeSingle();
     if (!parent || parent.channel_id !== channel.id) throw new ApiError(400, "That message isn't in this chat");
@@ -175,6 +175,10 @@ export async function postMessage(channel: Channel, members: string[], sender: P
   const others = members.filter((m) => m !== sender?.uuid);
   await notify(await inboxesOf(others.filter((m) => !pinged.has(m))), "channel", payload);
   if (pinged.size) await notify(await inboxesOf([...pinged]), "channel", { ...payload, mentioned: true });
+  if (kind === "text" && !extras.embeds) {
+    previewLater("channel_messages", data.id, body, async () =>
+      notify(await inboxesOf(members), "channel", { channel_id: channel.id, server_id: channel.server_id, id: data.id, edited: true }));
+  }
   // bots in this chat react to it (block bots, the Jace bot, and code bots' "message" event)
   if (sender && kind === "text") {
     const { onChannelMessage } = await import("./bots");

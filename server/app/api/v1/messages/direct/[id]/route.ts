@@ -1,6 +1,6 @@
 // PATCH {body}: edit your own direct message; DELETE: delete it
 import { ApiError, body, db, handler, me, notify } from "@/lib/server";
-import { embedsFor } from "@/lib/embeds";
+import { previewLater } from "@/lib/embeds";
 
 async function load(req: Request, idParam: string) {
   const p = await me(req);
@@ -14,8 +14,10 @@ export const PATCH = handler(async (req, ctx) => {
   const { p, m, inbox } = await load(req, (await ctx.params).id);
   const text = String((await body<{ body?: string }>(req)).body ?? "").trim();
   if ((!text && !(m.attachments ?? []).length) || text.length > 2000) throw new ApiError(400, "Messages need 1-2000 characters");
-  await db().from("messages").update({ body: text, edited_at: new Date().toISOString(), embeds: await embedsFor(text) }).eq("id", m.id);
-  if (inbox) await notify([inbox], "dm_update", { from: p.uuid, id: m.id, edited: true });
+  await db().from("messages").update({ body: text, edited_at: new Date().toISOString(), embeds: [] }).eq("id", m.id);
+  const tell = async () => notify([inbox, p.inbox].filter(Boolean) as string[], "dm_update", { from: p.uuid, with: m.recipient, id: m.id, edited: true });
+  await tell();
+  previewLater("messages", m.id, text, tell);
   return { ok: true };
 });
 

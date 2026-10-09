@@ -3,6 +3,8 @@
 // people's IP addresses aren't sent to every site that's linked.
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { after } from "next/server";
+import { db } from "./server";
 
 export type Embed = { url: string; title?: string; description?: string; image?: string; site?: string; color?: string; type: "link" | "image" | "video" };
 
@@ -127,4 +129,18 @@ export async function embedsFor(text: string): Promise<Embed[]> {
   if (!links.length) return [];
   const all = await Promise.all(links.map((l) => one(l).catch(() => null)));
   return all.filter(Boolean) as Embed[];
+}
+
+/**
+ * Add link previews to a message once it's sent (fetching them can take a few seconds,
+ * so the message goes out first, like Discord), then tell the chat it changed.
+ */
+export function previewLater(table: "channel_messages" | "messages", id: number, text: string, tell: () => Promise<void>) {
+  if (!linksIn(text).length) return;
+  after(async () => {
+    const embeds = await embedsFor(text).catch(() => []);
+    if (!embeds.length) return;
+    await db().from(table).update({ embeds }).eq("id", id);
+    await tell();
+  });
 }

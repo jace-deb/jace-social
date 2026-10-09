@@ -32,17 +32,22 @@ If both accounts already had friends or chats, linking merges them into one.
 
 - **Friends:** add by Minecraft or Jace username, with requests, online status and unread counts.
 - **Direct messages and group chats:** up to 10 people per group, with a name, picture, and adding or removing people.
-- **Servers:**
-  - text channels with topics
-  - owner, admins and members
-  - invite links
-  - editing and deleting messages
-  - a server icon and description
+- **Servers, like Discord:**
+  - text, voice and announcement channels in categories, with private channels and slowmode
+  - roles with colors, icons and permissions, plus per-channel permissions
+  - invite links (`jace-social.vercel.app/<code>`) and a custom link (`jace-social.vercel.app/yourserver`) that open in the desktop app or the browser
+  - onboarding: rules, questions that give roles, and a welcome screen
+  - moderation: kick, ban, time out, nicknames, pins, deleting messages
+  - an icon, banner, accent color and description
+- **Messages:** replies, reactions, @mentions (people, roles, @everyone), files and pictures (up to 10 MB), link previews, Discord-style formatting, typing indicators, and clickable links that warn before leaving Jace Social.
+- **Voice:** one-to-one calls, voice channels and group calls (up to 8 people), with screen sharing.
+- **Bots:** make your own bots, either Scratch-style with blocks (they run on the Jace Social server) or with code through the API and a bot token. You can switch to a bot and chat as it. The official **Jace** bot has `/help`, `/roll`, `/poll`, `/mcstatus` and more.
+- **Make it yours:** themes (dark, midnight, forest, light), accent color, text size, compact mode, notification settings and muting, an account switcher, a profile banner.
 - **Status:** Online, Idle, Do Not Disturb or Invisible, plus a custom status with an emoji.
 - **Rich presence:** the Minecraft version and loader, the server or world, the modpack, and how long you've been playing. It's reported by Jace Launcher and the mod.
 - **Profiles:** picture, display name, pronouns, about me, profile color, and up to 5 links.
-- **Voice calls:** one-to-one with friends, in the web app, the desktop app and Jace Launcher (all can call each other), and controlled from the mod.
-- **Hosted worlds:** host from the mod with roles, plus LuckPerms and WorldEdit permission menus.
+- **Voice calls with Jace Launcher too:** one-to-one calls work between the web app, the desktop app and Jace Launcher, and the mod controls them.
+- **In Minecraft (the mod):** friends, group chats and server channels; host your world with roles, and permission menus (LuckPerms, or the mod's own groups where LuckPerms can't run) and WorldEdit.
 
 ## Desktop app
 
