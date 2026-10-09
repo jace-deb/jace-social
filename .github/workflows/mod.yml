@@ -96,6 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       JACE_STORE_TOKEN: ${{ secrets.JACE_STORE_TOKEN }}
+      JACE_STORE_PROJECT: jace-social-minecraft
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
