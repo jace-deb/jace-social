@@ -110,9 +110,20 @@ class Bridge(QObject):
         return desktop.frozen()
 
     def _microsoft(self, rid: int, finish):
-        """Show Microsoft sign-in, then run finish(account) off the UI thread and reply."""
+        """Show Microsoft sign-in, then run finish(account) off the UI thread and reply.
+        The window opens without blocking (no exec()): this runs inside a call from the
+        web page, and a nested event loop here stalls WebEngine, so the sign-in page
+        would stay white."""
         dlg = MicrosoftLogin(self.window)
-        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.code:
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.finished.connect(lambda result: self._microsoft_done(rid, finish, dlg, result))
+        self._login = dlg                  # keep it alive while it's open
+        dlg.open()
+
+    def _microsoft_done(self, rid: int, finish, dlg: "MicrosoftLogin", result: int):
+        self._login = None
+        dlg.deleteLater()
+        if result != QDialog.DialogCode.Accepted.value or not dlg.code:
             self.reply.emit(rid, json.dumps({"error": dlg.error or "Sign-in was cancelled"}))
             return
         code = dlg.code
@@ -147,13 +158,14 @@ class Bridge(QObject):
     def checkForUpdate(self, rid: int):
         self.window.check_for_update(lambda r: self.reply.emit(rid, json.dumps(r)))
 
+    # these open dialogs, so let the page's call return first (see _microsoft)
     @Slot()
     def applyUpdate(self):
-        self.window.apply_update()
+        QTimer.singleShot(0, self.window.apply_update)
 
     @Slot()
     def deleteApp(self):
-        self.window.delete_app()
+        QTimer.singleShot(0, self.window.delete_app)
 
 
 class Page(QWebEnginePage):
