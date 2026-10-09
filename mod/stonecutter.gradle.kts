@@ -16,8 +16,6 @@ stonecutter parameters {
         match(loader, "fabric", "neoforge", "forge")
     }
 
-    swaps["mod_version"] = "\"${properties.get<String>("mod.version")}\";"
-
     replacements {
         string(current.parsed >= "1.21.11") {
             replace("ResourceLocation", "Identifier")

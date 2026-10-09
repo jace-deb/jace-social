@@ -17,12 +17,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Talks to LuckPerms through its API, so the menus work without /lp (in a singleplayer
  * or hosted world there's no server console to give anyone /lp access in the first place).
- * Only touch this class when LuckPerms is installed: it's the only one that loads LuckPerms classes.
+ * Only Perms uses this class, and only when LuckPerms is running: it's the only one that loads LuckPerms classes.
  */
 final class LuckPermsBridge {
-	/** Groups Jace Social' roles map to (see Roles). */
-	static final String[] ROLE_GROUPS = {"jace_visitor", "jace_builder", "jace_admin"};
-
 	private LuckPermsBridge() {}
 
 	private static LuckPerms api() {
@@ -37,21 +34,15 @@ final class LuckPermsBridge {
 	static CompletableFuture<Void> ensureRoleGroups() {
 		LuckPerms lp = api();
 		List<CompletableFuture<Group>> all = new ArrayList<>();
-		for (String g : ROLE_GROUPS) all.add(lp.getGroupManager().createAndLoadGroup(g));
+		for (String g : Perms.ROLE_GROUPS) all.add(lp.getGroupManager().createAndLoadGroup(g));
 		return CompletableFuture.allOf(all.toArray(new CompletableFuture[0]));
 	}
 
 	static List<String> groups() {
 		List<String> out = new ArrayList<>();
 		for (Group g : api().getGroupManager().getLoadedGroups()) out.add(g.getName());
-		out.sort((a, b) -> rank(a) != rank(b) ? rank(a) - rank(b) : a.compareTo(b));
+		out.sort((a, b) -> Perms.rank(a) != Perms.rank(b) ? Perms.rank(a) - Perms.rank(b) : a.compareTo(b));
 		return out;
-	}
-
-	private static int rank(String g) {
-		if (g.equals("default")) return 0;
-		for (int i = 0; i < ROLE_GROUPS.length; i++) if (g.equals(ROLE_GROUPS[i])) return i + 1;
-		return 10;
 	}
 
 	/** A group's own permissions as {node, "true"/"false"}. */

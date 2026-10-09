@@ -16,8 +16,9 @@ import java.nio.file.Path;
  *   Admin   - operator
  * Friends get their own role; everyone else gets the default role. Applied with
  * normal commands when a player joins, so it works the same on every version.
- * If LuckPerms is installed, players are also put in jace_visitor / jace_builder /
- * jace_admin groups so you can give each group custom permissions.
+ * Players are also put in jace_visitor / jace_builder / jace_admin permission groups
+ * (LuckPerms', or Jace Social's own without it - see Perms) so each group can get
+ * custom permissions.
  */
 public final class Roles {
 	public enum Role {
@@ -101,20 +102,18 @@ public final class Roles {
 		if (WorldEditScreen.usesLuckPerms()) {
 			Compat.setOp(server, player, role == Role.ADMIN);
 			try {
-				LuckPermsBridge.setUserPermission(player.getUUID(), "worldedit.*", we ? Boolean.TRUE : null);
+				Perms.setUserPermission(player.getUUID(), "worldedit.*", we ? Boolean.TRUE : null);
 			} catch (RuntimeException ignored) {
 				// LuckPerms not started yet
 			}
 		} else {
 			Compat.setOp(server, player, role == Role.ADMIN || we);
 		}
-		if (Compat.isModLoaded("luckperms")) {
-			try {
-				LuckPermsBridge.ensureRoleGroups()
-						.thenCompose(v -> LuckPermsBridge.setUserGroup(player.getUUID(), "jace_" + role.name().toLowerCase()));
-			} catch (RuntimeException ignored) {
-				// LuckPerms not started yet: they keep their old group
-			}
+		try {
+			Perms.ensureRoleGroups()
+					.thenCompose(v -> Perms.setUserGroup(player.getUUID(), "jace_" + role.name().toLowerCase()));
+		} catch (RuntimeException ignored) {
+			// LuckPerms not started yet: they keep their old group
 		}
 		Minecraft.getInstance().execute(() -> Compat.toast(joined ? "Friend joined" : "Role changed", name + (joined ? " joined as " : " is now ") + role.label));
 	}

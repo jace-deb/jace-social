@@ -34,20 +34,27 @@ public class LuckPermsScreen extends Screen {
 	private boolean newValue = true;
 
 	public LuckPermsScreen(Screen parent) {
-		super(Component.literal("LuckPerms"));
+		super(Component.literal(Perms.luckPerms() ? "LuckPerms" : "Permissions"));
 		this.parent = parent;
-		ready = Compat.isModLoaded("luckperms") && Minecraft.getInstance().getSingleplayerServer() != null;
+		ready = Minecraft.getInstance().getSingleplayerServer() != null;
 		if (!ready) {
-			status = Compat.isModLoaded("luckperms") ? "Open a world first"
-					: "Install LuckPerms: Jace Launcher > your instance > Mods > Server add-ons";
+			status = "Open a world first";
 			return;
 		}
-		run(LuckPermsBridge.ensureRoleGroups(), null);
+		// without LuckPerms these are Jace Social's own groups (see BuiltinPerms)
+		if (!Perms.luckPerms()) {
+			status = Perms.luckPermsSkipped()
+					? "LuckPerms only runs on dedicated servers on Fabric - using Jace Social's permissions here"
+					: Perms.builtinReachesMods() ? "Jace Social's permissions (no LuckPerms needed)"
+					: "Saved for your roles; other mods only see them with LuckPerms (NeoForge/Forge)";
+		}
+		run(Perms.ensureRoleGroups(), null);
 		checkLp();
 	}
 
 	private void checkLp() {
-		LuckPermsBridge.userHas(WorldPlayers.me(), "luckperms.*").whenComplete((v, err) ->
+		if (!Perms.luckPerms()) return;
+		Perms.userHas(WorldPlayers.me(), "luckperms.*").whenComplete((v, err) ->
 				Minecraft.getInstance().execute(() -> { canUseLp = err == null && v; refreshUi(); }));
 	}
 
@@ -62,15 +69,15 @@ public class LuckPermsScreen extends Screen {
 
 	private void reload() {
 		try {
-			groups = LuckPermsBridge.groups();
+			groups = Perms.groups();
 			groupIndex = Math.max(0, Math.min(groupIndex, groups.size() - 1));
-			perms = groups.isEmpty() ? new ArrayList<>() : LuckPermsBridge.permissions(group());
+			perms = groups.isEmpty() ? new ArrayList<>() : Perms.permissions(group());
 		} catch (RuntimeException e) {
 			status = FriendsScreen.cause(e);
 		}
 		if (playersTab) {
 			for (WorldPlayers.Player p : WorldPlayers.list()) {
-				LuckPermsBridge.userGroup(p.uuid()).thenAccept(g -> Minecraft.getInstance().execute(() -> {
+				Perms.userGroup(p.uuid()).thenAccept(g -> Minecraft.getInstance().execute(() -> {
 					playerGroups.put(p.uuid(), g);
 					refreshUi();
 				}));
@@ -102,10 +109,12 @@ public class LuckPermsScreen extends Screen {
 				.bounds(left + 74, 34, 70, 20).build());
 		groupsTab.active = playersTab;
 		playersTabBtn.active = !playersTab;
+		if (Perms.luckPerms()) {
 		Button lp = addRenderableWidget(Button.builder(Component.literal(Boolean.TRUE.equals(canUseLp) ? "You can use /lp" : "Let me use /lp"), b ->
-				run(LuckPermsBridge.setUserPermission(WorldPlayers.me(), "luckperms.*", true).thenRun(this::checkLp),
+				run(Perms.setUserPermission(WorldPlayers.me(), "luckperms.*", true).thenRun(this::checkLp),
 						"Done - you can now use /lp in chat")).bounds(right - 110, 34, 110, 20).build());
 		lp.active = !Boolean.TRUE.equals(canUseLp);
+		}
 
 		int per = perPage();
 		int y = 86;
@@ -119,9 +128,9 @@ public class LuckPermsScreen extends Screen {
 				String node = perms.get(i)[0];
 				boolean value = Boolean.parseBoolean(perms.get(i)[1]);
 				addRenderableWidget(Button.builder(Component.literal(value ? "Allow" : "Deny"), b ->
-						run(LuckPermsBridge.setGroupPermission(group(), node, !value), null)).bounds(right - 124, y, 60, 20).build());
+						run(Perms.setGroupPermission(group(), node, !value), null)).bounds(right - 124, y, 60, 20).build());
 				addRenderableWidget(Button.builder(Component.literal("Remove"), b ->
-						run(LuckPermsBridge.setGroupPermission(group(), node, null), "Removed " + node)).bounds(right - 60, y, 60, 20).build());
+						run(Perms.setGroupPermission(group(), node, null), "Removed " + node)).bounds(right - 60, y, 60, 20).build());
 				y += ROW;
 			}
 			// add a permission
@@ -138,7 +147,7 @@ public class LuckPermsScreen extends Screen {
 				if (node.isEmpty() || node.contains(" ")) { status = "Type a permission without spaces"; return; }
 				nodeText = "";
 				nodeBox.setValue("");
-				run(LuckPermsBridge.setGroupPermission(group(), node, newValue), (newValue ? "Allowed " : "Denied ") + node + " for " + group());
+				run(Perms.setGroupPermission(group(), node, newValue), (newValue ? "Allowed " : "Denied ") + node + " for " + group());
 			}).bounds(left + 244, height - 54, 64, 20).build());
 			pager(perms.size(), per, cx, by);
 		} else {
@@ -151,7 +160,7 @@ public class LuckPermsScreen extends Screen {
 					if (groups.isEmpty()) return;
 					int at = groups.indexOf(current);
 					String next = groups.get((at + 1) % groups.size());
-					run(LuckPermsBridge.setUserGroup(p.uuid(), next), p.name() + " is now in " + next);
+					run(Perms.setUserGroup(p.uuid(), next), p.name() + " is now in " + next);
 				}).bounds(right - 110, y, 110, 20).build());
 				y += ROW;
 			}

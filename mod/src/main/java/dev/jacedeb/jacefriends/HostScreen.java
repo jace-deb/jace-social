@@ -60,7 +60,7 @@ public class HostScreen extends Screen {
 
 		int by = height - 28;
 		// permission menus (they explain what to install if LuckPerms / WorldEdit are missing)
-		addRenderableWidget(Button.builder(Component.literal("LuckPerms…"), b -> Compat.setScreen(new LuckPermsScreen(this)))
+		addRenderableWidget(Button.builder(Component.literal(Perms.luckPerms() ? "LuckPerms…" : "Permissions…"), b -> Compat.setScreen(new LuckPermsScreen(this)))
 				.bounds(cx - 154, by - 24, 100, 20).build());
 		addRenderableWidget(Button.builder(Component.literal("WorldEdit…"), b -> Compat.setScreen(new WorldEditScreen(this)))
 				.bounds(cx - 50, by - 24, 100, 20).build());

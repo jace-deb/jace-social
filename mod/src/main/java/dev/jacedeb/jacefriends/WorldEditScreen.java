@@ -58,7 +58,7 @@ public class WorldEditScreen extends Screen {
 		if (sp == null) return;
 		if (usesLuckPerms()) {
 			for (WorldPlayers.Player p : players) {
-				LuckPermsBridge.userHas(p.uuid(), "worldedit.*").whenComplete((v, err) -> Minecraft.getInstance().execute(() -> {
+				Perms.userHas(p.uuid(), "worldedit.*").whenComplete((v, err) -> Minecraft.getInstance().execute(() -> {
 					if (err != null) status = FriendsScreen.cause(err);
 					else state.put(p.uuid(), v);
 					refreshUi();
@@ -78,7 +78,7 @@ public class WorldEditScreen extends Screen {
 		if (sp == null) return;
 		String done = "WorldEdit " + (on ? "on" : "off") + " for " + who.name();
 		if (usesLuckPerms()) {
-			LuckPermsBridge.setUserPermission(who.uuid(), "worldedit.*", on ? Boolean.TRUE : null)
+			Perms.setUserPermission(who.uuid(), "worldedit.*", on ? Boolean.TRUE : null)
 					.whenComplete((v, err) -> Minecraft.getInstance().execute(() -> {
 						status = err != null ? FriendsScreen.cause(err) : done;
 						refresh();

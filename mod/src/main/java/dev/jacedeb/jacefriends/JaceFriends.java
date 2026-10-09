@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 
 /** Loader-independent mod logic; the Fabric/NeoForge/Forge entry points call into this. */
 public final class JaceFriends {
-	public static final String VERSION = /*$ mod_version*/ "1.1.0";
+	public static final String VERSION = Compat.modVersion();
 	private static final Pattern E4MC = Pattern.compile("([a-z0-9-]+\\.)+e4mc\\.link");
 	private static final int PRESENCE_EVERY_TICKS = 20 * 120;   // heartbeat every 2 minutes
 

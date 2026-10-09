@@ -102,6 +102,24 @@ public final class Compat {
 		*///?}
 	}
 
+	/** This mod's version, from the loader's metadata (e.g. "1.4.0+26.3"). */
+	public static String modVersion() {
+		try {
+			//? if fabric {
+			return net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer("jacefriends")
+					.map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("?");
+			//?} elif neoforge {
+			/*return net.neoforged.fml.ModList.get().getModContainerById("jacefriends")
+					.map(c -> c.getModInfo().getVersion().toString()).orElse("?");
+			*///?} else {
+			/*return net.minecraftforge.fml.ModList.get().getModContainerById("jacefriends")
+					.map(c -> c.getModInfo().getVersion().toString()).orElse("?");
+			*///?}
+		} catch (RuntimeException e) {
+			return "?";
+		}
+	}
+
 	public static boolean isModLoaded(String id) {
 		//? if fabric {
 		return net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(id);
