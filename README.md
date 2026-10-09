@@ -1,6 +1,6 @@
 # Jace Social
 
-**Website:** https://jace-deb.github.io/jace-social/ · **Web app:** https://jace-social.vercel.app/app
+**Website:** https://jace-social.vercel.app · **Web app:** https://jace-social.vercel.app/app
 
 Friends, direct messages, group chats, servers and voice calls, with Minecraft built in. Use it:
 - in your browser
@@ -17,7 +17,7 @@ One account, the same friends everywhere.
 | `server/` | The Jace Social server and web app (Next.js on Vercel, Supabase database). See [server/README.md](server/README.md). |
 | `app/` | The desktop app: the web app in its own window, plus Minecraft sign-in, notifications and a tray icon (Python + Qt). |
 | `mod/` | The Jace Social mod for Minecraft 1.20.1-26.3 on Fabric/Quilt, NeoForge and Forge (Stonecutter). |
-| `site/` | This project's website (GitHub Pages). |
+| `site/` | A redirect: the old GitHub Pages address sends visitors to the website at jace-social.vercel.app (`server/app/page.tsx`). |
 | `packaging/` | Scripts that publish the mod and the desktop app to [Jace Store](https://jace-store-deb.vercel.app). |
 
 ## Accounts

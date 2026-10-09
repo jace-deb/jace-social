@@ -42,7 +42,7 @@ export default function InviteLanding({ code, server }: { code: string; server: 
           <button className="btn primary invite-btn" onClick={openApp}>Open in the desktop app</button>
           <a className="btn invite-btn" href={`/invite/${encodeURIComponent(code)}`}>Continue in the browser</a>
           {tried && <p className="muted small" style={{ margin: 0 }}>
-            Nothing happened? <a href="https://jace-deb.github.io/jace-social/">Get the desktop app</a>, or continue in the browser.</p>}
+            Nothing happened? <a href="/#download">Get the desktop app</a>, or continue in the browser.</p>}
         </>}
       </div>
     </main>

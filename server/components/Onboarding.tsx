@@ -117,7 +117,7 @@ export function ServerOnboarding({ detail, onDone, onOpenChannel, onError }: {
   }
   const welcomeChannels = (s.welcome?.channels ?? []).map((w) => ({ ...w, channel: detail.channels.find((c) => c.id === w.id) })).filter((w) => w.channel);
   return (
-    <Modal onClose={() => (step === "welcome" ? onDone() : undefined)}>
+    <Modal onClose={() => (step === "welcome" || detail.onboarded ? onDone() : undefined)}>
       {s.banner_url && <div className="profile-banner" style={{ background: `center / cover url(${s.banner_url})` }} />}
       <div className="modal-body onboarding">
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>

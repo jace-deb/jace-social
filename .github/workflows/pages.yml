@@ -1,4 +1,5 @@
-# Publishes the website in site/ to GitHub Pages.
+# Publishes site/ to GitHub Pages (jace-deb.github.io/jace-social). The website itself is now at
+# https://jace-social.vercel.app/ (server/app/page.tsx); site/ only redirects old links there.
 name: Website
 
 on:

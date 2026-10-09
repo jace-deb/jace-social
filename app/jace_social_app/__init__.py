@@ -10,7 +10,7 @@ APP_ID = "io.github.jace_deb.JaceSocial"
 AUTHOR = "jace.deb"
 GITHUB_REPO = "jace-deb/jace-social"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
-WEBSITE = "https://jace-deb.github.io/jace-social/"
+WEBSITE = "https://jace-social.vercel.app/"
 URL_SCHEME = "jacesocial"          # jacesocial://invite/<code> opens an invite in the app
 
 

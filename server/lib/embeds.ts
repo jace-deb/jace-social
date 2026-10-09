@@ -77,7 +77,7 @@ async function one(raw: string): Promise<Embed | null> {
     try {
       const r = await fetch(url, {
         redirect: "manual", signal: ctrl.signal,
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; JaceSocialBot/1.0; +https://jace-deb.github.io/jace-social/)", Accept: "text/html,image/*;q=0.8" },
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; JaceSocialBot/1.0; +https://jace-social.vercel.app/)", Accept: "text/html,image/*;q=0.8" },
       });
       if (r.status >= 300 && r.status < 400 && r.headers.get("location")) {
         url = await safeUrl(new URL(r.headers.get("location")!, url).toString());

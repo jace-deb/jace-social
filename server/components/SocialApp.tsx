@@ -32,7 +32,7 @@ type View =
   | { kind: "server"; id: string; channel?: string };
 type ModalState =
   | { kind: "settings"; tab?: SettingsTab } | { kind: "group" } | { kind: "server" } | { kind: "serverSettings"; tab?: "invites" }
-  | { kind: "channel"; channel: Channel } | { kind: "status" } | { kind: "welcome" } | null;
+  | { kind: "channel"; channel: Channel } | { kind: "status" } | { kind: "welcome" } | { kind: "serverWelcome" } | null;
 
 export default function SocialApp({ inviteCode }: { inviteCode?: string }) {
   const [token, setTok] = useState<string | null>(null);
@@ -411,6 +411,8 @@ function Main({ me, setMe, signOut, inviteCode }: {
             <div className="menu server-menu" onMouseLeave={() => setMenu(null)}>
               {has(perms, P.INVITE) && <button onClick={() => { setMenu(null); setModal({ kind: "serverSettings", tab: "invites" }); }}>👋 Invite people</button>}
               <button onClick={() => { setMenu(null); setModal({ kind: "serverSettings" }); }}>⚙ Server settings</button>
+              {(detail.server.rules || detail.server.welcome?.message || detail.server.welcome?.channels?.length || detail.server.onboarding?.length) ?
+                <button onClick={() => { setMenu(null); setModal({ kind: "serverWelcome" }); }}>📜 Rules &amp; welcome</button> : null}
               {canManageChannels && <button onClick={async () => {
                 setMenu(null);
                 const name = prompt("New channel name");
@@ -506,6 +508,7 @@ function Main({ me, setMe, signOut, inviteCode }: {
               <hr />
               <button onClick={() => { setMenu(null); setModal({ kind: "status" }); }}>🟢 Set status</button>
               <button onClick={() => { setMenu(null); setModal({ kind: "settings" }); }}>⚙ Settings</button>
+              {!me.is_bot && <button onClick={() => { setMenu(null); setModal({ kind: "welcome" }); }}>👋 Welcome tour</button>}
               {settings.developer && <button onClick={() => { setMenu(null); void navigator.clipboard?.writeText(me.uuid); }}># Copy my ID</button>}
               <button style={{ color: "var(--red)" }} onClick={signOut}>Sign out</button>
             </div>
@@ -586,7 +589,8 @@ function Main({ me, setMe, signOut, inviteCode }: {
       {profile && <ProfileModal uuid={profile} onClose={() => setProfile(null)} onError={err}
         detail={view.kind === "server" ? detail : null} me={me}
         onMessage={(p) => go({ kind: "dm", uuid: p.uuid })} onChanged={() => { void loadFriends(); if (detail) void loadDetail(detail.server.id); }} />}
-      {modal?.kind === "settings" && <SettingsModal me={me} initialTab={modal.tab} onClose={() => setModal(null)} onSaved={setMe} onSignOut={signOut} onError={err} />}
+      {modal?.kind === "settings" && <SettingsModal me={me} initialTab={modal.tab} onClose={() => setModal(null)} onSaved={setMe} onSignOut={signOut} onError={err}
+        onWelcome={() => setModal({ kind: "welcome" })} />}
       {modal?.kind === "status" && <StatusModal me={me} onClose={() => setModal(null)} onSaved={setMe} onError={err} />}
       {modal?.kind === "welcome" && <Welcome me={me} onDone={() => setModal(null)} onSaved={setMe} onError={err} onJoinServer={() => setModal({ kind: "server" })} />}
       {modal?.kind === "group" && <NewGroupModal friends={friends.friends} onClose={() => setModal(null)} onError={err}
@@ -598,8 +602,8 @@ function Main({ me, setMe, signOut, inviteCode }: {
         onLeft={() => { setView({ kind: "home" }); setDetail(null); void loadServers(); }} />}
       {modal?.kind === "channel" && detail && <ChannelSettings detail={detail} channel={detail.channels.find((c) => c.id === modal.channel.id) ?? modal.channel}
         onClose={() => setModal(null)} onError={err} onChanged={() => void loadDetail(detail.server.id)} />}
-      {view.kind === "server" && detail && !detail.onboarded && !modal && (
-        <ServerOnboarding detail={detail} onError={err} onDone={() => void loadDetail(detail.server.id)}
+      {view.kind === "server" && detail && (modal?.kind === "serverWelcome" || (!detail.onboarded && !modal)) && (
+        <ServerOnboarding detail={detail} onError={err} onDone={() => { setModal(null); void loadDetail(detail.server.id); }}
           onOpenChannel={(id) => setView({ kind: "server", id: detail.server.id, channel: id })} />
       )}
       <CallPanel calls={calls} info={call} people={people} />

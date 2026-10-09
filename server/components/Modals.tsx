@@ -83,8 +83,9 @@ export type SettingsTab = "profile" | "status" | "appearance" | "notifications" 
 const TAB_NAMES: [SettingsTab, string][] = [["profile", "My profile"], ["status", "Status"], ["appearance", "Appearance"],
   ["notifications", "Notifications"], ["links", "Links & privacy"], ["accounts", "Accounts"], ["bots", "My bots"], ["advanced", "Advanced"]];
 
-export function SettingsModal({ me, onClose, onSaved, onSignOut, onError, initialTab }: {
+export function SettingsModal({ me, onClose, onSaved, onSignOut, onError, initialTab, onWelcome }: {
   me: Me; onClose: () => void; onSaved: (m: Me) => void; onSignOut: () => void; onError: Err; initialTab?: SettingsTab;
+  onWelcome?: () => void;     // show the first-time walkthrough again
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab ?? "profile");
   const [f, setF] = useState({
@@ -146,6 +147,7 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError, initia
           {TAB_NAMES.filter(([t]) => !(me.is_bot && (t === "bots" || t === "accounts"))).map(([t, label]) => (
             <button key={t} className={`side-item${tab === t ? " active" : ""}`} onClick={() => { setTab(t); setNote(""); }}>{label}</button>
           ))}
+          {onWelcome && !me.is_bot && <button className="side-item" onClick={onWelcome}>👋 Welcome tour</button>}
           <button className="side-item" style={{ color: "var(--red)" }} onClick={onSignOut}>Sign out</button>
           <DesktopVersion />
         </nav>
