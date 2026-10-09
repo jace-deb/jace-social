@@ -1,6 +1,6 @@
 "use client";
 // The floating voice call panel: ringing, calling, and in a call.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Person } from "@/lib/client";
 import type { CallInfo, Calls } from "@/lib/calls";
 import { Avatar } from "./ui";
@@ -28,16 +28,30 @@ export function CallPanel({ calls, info, people }: { calls: Calls; info: CallInf
 
   return (
     <div className="call-panel" role="dialog" aria-label="Voice call">
+      {info.remoteScreen && <RemoteScreen stream={info.remoteScreen} name={p.name} />}
       <Avatar p={p} size={44} />
-      <div className="call-who"><b>{p.name}</b><span>{line}</span></div>
+      <div className="call-who"><b>{p.name}</b><span>{line}{info.sharing ? " · sharing your screen" : ""}</span></div>
       {info.state === "ringing" ? <>
         <button className="btn primary small" onClick={() => void calls.answer()}>Answer</button>
         <button className="btn danger small" onClick={() => calls.hangUp()}>Decline</button>
       </> : <>
         {info.state === "in-call" && !info.noMic &&
           <button className="btn small" onClick={() => calls.toggleMute()} aria-pressed={info.muted}>{info.muted ? "Unmute" : "Mute"}</button>}
+        {info.state === "in-call" && typeof navigator !== "undefined" && "getDisplayMedia" in (navigator.mediaDevices ?? {}) &&
+          <button className={`btn small${info.sharing ? " primary" : ""}`} onClick={() => void calls.toggleScreen()} title="Share your screen">🖥️</button>}
         <button className="btn danger small" onClick={() => calls.hangUp()}>{info.state === "calling" ? "Cancel" : "Hang up"}</button>
       </>}
+    </div>
+  );
+}
+
+function RemoteScreen({ stream, name }: { stream: MediaStream; name: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => { if (ref.current) ref.current.srcObject = stream; }, [stream]);
+  return (
+    <div className="call-screen">
+      <video ref={ref} autoPlay playsInline className="call-video" onDoubleClick={(e) => void e.currentTarget.requestFullscreen?.().catch(() => {})} />
+      <span className="muted small">🖥️ {name}'s screen · double-click for full screen</span>
     </div>
   );
 }

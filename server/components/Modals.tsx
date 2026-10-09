@@ -1,10 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
 import { MinecraftDevice } from "./MinecraftDevice";
+import { MyBots } from "./Bots";
+import { addAnotherAccount, forgetAccount, savedAccounts, switchAccount } from "@/lib/accounts";
+import { ACCENTS, applySettings, THEME_NAMES } from "@/lib/theme";
 import {
-  api, desktopReady, getToken, inDesktop, since, statusLabel, type Me, type Person, type ServerDetail, type Status, type DesktopBridge,
+  api, desktopReady, getToken, inDesktop, since, statusLabel, type Me, type Person, type Settings, type Status, type DesktopBridge, type ServerDetail,
 } from "@/lib/client";
 import { ActivityCard, Avatar, Modal, PersonRow } from "./ui";
+import { Link } from "./Markdown";
+import { MemberActions } from "./ServerSettings";
 
 type Err = (m: string) => void;
 
@@ -13,13 +18,16 @@ type Err = (m: string) => void;
 // ---------------------------------------------------------------------------------
 type FullProfile = Person & { is_friend: boolean; is_you: boolean; mutual_servers: { id: string; name: string; icon_url: string | null }[] };
 
-export function ProfileModal({ uuid, onClose, onMessage, onChanged, onError }: {
+export function ProfileModal({ uuid, onClose, onMessage, onChanged, onError, detail, me }: {
   uuid: string; onClose: () => void; onMessage: (p: Person) => void; onChanged: () => void; onError: Err;
+  detail?: ServerDetail | null; me?: Me;     // opened from a server: show their roles and what you can do
 }) {
   const [p, setP] = useState<FullProfile | null>(null);
   useEffect(() => { api<FullProfile>(`/users/${uuid}`).then(setP).catch((e) => { onError(e.message); onClose(); }); }, [uuid]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p) return null;
   const accent = p.accent_color ?? "#2a4a37";
+  const member = detail?.members.find((m) => m.uuid === uuid);
+  const roles = detail ? detail.roles.filter((r) => member?.roles?.includes(r.id)).sort((a, b) => b.position - a.position) : [];
   async function addFriend() {
     try { await api("/friends", { body: { uuid } }); onChanged(); onClose(); } catch (e) { onError((e as Error).message); }
   }
@@ -29,11 +37,12 @@ export function ProfileModal({ uuid, onClose, onMessage, onChanged, onError }: {
   }
   return (
     <Modal onClose={onClose}>
-      <div className="profile-banner" style={{ background: accent }} />
+      <div className="profile-banner" style={{ background: p.banner_url ? `center / cover url(${p.banner_url})` : accent }} />
       <div className="profile-head"><Avatar p={p} size={92} status={p.status} /></div>
       <div className="modal-body">
         <div>
-          <h2>{p.name}</h2>
+          <h2>{member?.nickname || p.name}{p.is_bot && <span className="bot-tag" style={{ marginLeft: 8, verticalAlign: "middle" }}>BOT</span>}</h2>
+          {member?.nickname && <div className="muted small">{p.name}</div>}
           <div className="muted small">
             {[p.jace_name && `@${p.jace_name}`, p.minecraft_name && `⛏ ${p.minecraft_name}`, p.pronouns].filter(Boolean).join(" · ")}
           </div>
@@ -45,13 +54,17 @@ export function ProfileModal({ uuid, onClose, onMessage, onChanged, onError }: {
         <ActivityCard a={p.activity} />
         {p.bio && <div className="card"><div className="kind muted small" style={{ fontWeight: 800 }}>ABOUT ME</div><div style={{ whiteSpace: "pre-wrap" }}>{p.bio}</div></div>}
         {p.links.length > 0 && (
-          <div className="chips">{p.links.map((l) => <a key={l.url} className="chip" href={l.url} target="_blank" rel="noopener noreferrer nofollow">🔗 {l.label}</a>)}</div>
+          <div className="chips">{p.links.map((l) => <Link key={l.url} href={l.url}><span className="chip">🔗 {l.label}</span></Link>)}</div>
         )}
+        {detail && member && <>
+          {roles.length > 0 && <div className="chips">{roles.map((r) => <span key={r.id} className="chip"><span className="role-dot" style={{ background: r.color ?? "var(--gray)" }} /> {r.name}</span>)}</div>}
+          {me && <MemberActions detail={detail} member={member} me={me} run={async (fn) => { try { await fn(); onChanged(); return true; } catch (e) { onError((e as Error).message); return false; } }} />}
+        </>}
         {p.mutual_servers.length > 0 && (
           <div className="small muted">Servers you share: {p.mutual_servers.map((s) => s.name).join(", ")}</div>
         )}
       </div>
-      {!p.is_you && (
+      {!p.is_you && !p.is_bot && (
         <div className="modal-foot">
           {p.is_friend ? <>
             <button className="btn danger" onClick={removeFriend}>Remove friend</button>
@@ -66,10 +79,14 @@ export function ProfileModal({ uuid, onClose, onMessage, onChanged, onError }: {
 // ---------------------------------------------------------------------------------
 // Your settings: profile, status, linked accounts
 // ---------------------------------------------------------------------------------
-export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
-  me: Me; onClose: () => void; onSaved: (m: Me) => void; onSignOut: () => void; onError: Err;
+export type SettingsTab = "profile" | "status" | "appearance" | "notifications" | "links" | "accounts" | "bots" | "advanced";
+const TAB_NAMES: [SettingsTab, string][] = [["profile", "My profile"], ["status", "Status"], ["appearance", "Appearance"],
+  ["notifications", "Notifications"], ["links", "Links & privacy"], ["accounts", "Accounts"], ["bots", "My bots"], ["advanced", "Advanced"]];
+
+export function SettingsModal({ me, onClose, onSaved, onSignOut, onError, initialTab }: {
+  me: Me; onClose: () => void; onSaved: (m: Me) => void; onSignOut: () => void; onError: Err; initialTab?: SettingsTab;
 }) {
-  const [tab, setTab] = useState<"profile" | "status" | "accounts">("profile");
+  const [tab, setTab] = useState<SettingsTab>(initialTab ?? "profile");
   const [f, setF] = useState({
     display_name: me.display_name ?? "", pronouns: me.pronouns ?? "", bio: me.bio ?? "",
     accent_color: me.accent_color ?? "#3ddc84", links: me.links.length ? me.links : [{ label: "", url: "" }],
@@ -126,9 +143,8 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
     <Modal onClose={onClose} wide>
       <div className="settings">
         <nav>
-          {(["profile", "status", "accounts"] as const).map((t) => (
-            <button key={t} className={`side-item${tab === t ? " active" : ""}`} onClick={() => { setTab(t); setNote(""); }}>
-              {t === "profile" ? "My profile" : t === "status" ? "Status" : "Linked accounts"}</button>
+          {TAB_NAMES.filter(([t]) => !(me.is_bot && (t === "bots" || t === "accounts"))).map(([t, label]) => (
+            <button key={t} className={`side-item${tab === t ? " active" : ""}`} onClick={() => { setTab(t); setNote(""); }}>{label}</button>
           ))}
           <button className="side-item" style={{ color: "var(--red)" }} onClick={onSignOut}>Sign out</button>
           <DesktopVersion />
@@ -136,6 +152,14 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
         <div className="modal-body">
           {tab === "profile" && <>
             <h2>My profile</h2>
+            <div className="server-banner-edit" style={{ height: 90, background: me.banner_url ? `center / cover url(${me.banner_url})` : f.accent_color }}>
+              <label className="btn small">Change banner<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try { await api("/me/banner", { raw: file }); onSaved(await api<Me>("/me")); } catch (err) { onError((err as Error).message); }
+              }} /></label>
+              {me.banner_url && <button className="btn small" onClick={async () => { await api("/me/banner", { method: "DELETE" }); onSaved(await api<Me>("/me")); }}>Remove</button>}
+            </div>
             <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
               <Avatar p={me} size={72} />
               <div style={{ display: "grid", gap: 6 }}>
@@ -171,8 +195,15 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
             </div>
           </>}
           {tab === "status" && <StatusEditor me={me} onSaved={onSaved} onError={onError} />}
+          {tab === "appearance" && <AppearanceTab me={me} onSaved={onSaved} onError={onError} />}
+          {tab === "notifications" && <NotificationsTab me={me} onSaved={onSaved} onError={onError} />}
+          {tab === "links" && <LinksTab me={me} onSaved={onSaved} onError={onError} />}
+          {tab === "bots" && <MyBots onError={onError} />}
+          {tab === "advanced" && <AdvancedTab me={me} onSaved={onSaved} onError={onError} />}
           {tab === "accounts" && <>
-            <h2>Linked accounts</h2>
+            <h2>Switch accounts</h2>
+            <AccountSwitcher me={me} />
+            <h2 style={{ marginTop: 8 }}>Linked accounts</h2>
             <p className="muted">Link both to sign in either way. Your friends, chats and servers stay with you.</p>
             <div className="card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1 }}><b>Jace</b><div className="muted small">{me.jace_linked ? `@${me.jace_name}` : "Not linked"}</div></div>
@@ -192,6 +223,121 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// Settings that follow you (Appearance, Notifications, Links, Advanced)
+// ---------------------------------------------------------------------------------
+type SettingsProps = { me: Me; onSaved: (m: Me) => void; onError: Err };
+
+function useSettings({ me, onSaved, onError }: SettingsProps) {
+  const s = me.settings ?? {};
+  const set = async (patch: Settings) => {
+    const next = { ...s, ...patch };
+    applySettings(next);
+    onSaved({ ...me, settings: next });                     // show it right away
+    try { onSaved(await api<Me>("/me", { method: "PATCH", body: { settings: patch } })); } catch (e) { onError((e as Error).message); }
+  };
+  return { s, set };
+}
+
+function Toggle({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="perm-row">
+      <div className="grow"><b>{label}</b>{desc && <div className="muted small">{desc}</div>}</div>
+      <input type="checkbox" className="toggle" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </div>
+  );
+}
+
+function AppearanceTab(props: SettingsProps) {
+  const { s, set } = useSettings(props);
+  return <>
+    <h2>Appearance</h2>
+    <label>Theme</label>
+    <div className="theme-grid">
+      {THEME_NAMES.map(([id, label, bg]) => (
+        <button key={id} className={`theme-card${(s.theme ?? "dark") === id ? " on" : ""}`} onClick={() => void set({ theme: id })}>
+          <span className="theme-swatch" style={{ background: bg }} />{label}</button>
+      ))}
+    </div>
+    <label>Accent color</label>
+    <div className="swatches">
+      {ACCENTS.map((c) => <button key={c} className={`swatch${(s.accent ?? "#3ddc84") === c ? " on" : ""}`} style={{ background: c }} onClick={() => void set({ accent: c })} />)}
+      <input type="color" value={s.accent ?? "#3ddc84"} onChange={(e) => void set({ accent: e.target.value })} style={{ width: 40, padding: 2 }} />
+    </div>
+    <label>Text size: {Math.round((s.font_scale ?? 1) * 100)}%
+      <input type="range" min={0.8} max={1.4} step={0.05} value={s.font_scale ?? 1} onChange={(e) => void set({ font_scale: Number(e.target.value) })} />
+    </label>
+    <Toggle label="Compact messages" desc="Fit more messages on screen" checked={!!s.compact} onChange={(v) => void set({ compact: v })} />
+    <Toggle label="Show pictures next to messages" checked={s.show_avatars !== false} onChange={(v) => void set({ show_avatars: v })} />
+    <Toggle label="Show link previews" checked={s.show_embeds !== false} onChange={(v) => void set({ show_embeds: v })} />
+    <Toggle label="Less motion" desc="Turn off animations" checked={!!s.reduce_motion} onChange={(v) => void set({ reduce_motion: v })} />
+    <Toggle label="24-hour clock" checked={s.time_format === "24h"} onChange={(v) => void set({ time_format: v ? "24h" : "12h" })} />
+    <Toggle label="Enter sends the message" desc="Off: Enter makes a new line, and you click Send" checked={s.send_on_enter !== false} onChange={(v) => void set({ send_on_enter: v })} />
+  </>;
+}
+
+function NotificationsTab(props: SettingsProps) {
+  const { s, set } = useSettings(props);
+  return <>
+    <h2>Notifications</h2>
+    <label>Notify me about
+      <select value={s.notify ?? "all"} onChange={(e) => void set({ notify: e.target.value as Settings["notify"] })}>
+        <option value="all">All messages</option><option value="mentions">Only direct messages, @mentions and replies</option><option value="none">Nothing</option>
+      </select>
+    </label>
+    <Toggle label="Pop-up notifications" desc="When Jace Social isn't the window you're using" checked={s.desktop_notifications !== false} onChange={(v) => void set({ desktop_notifications: v })} />
+    <Toggle label="Sounds" desc="For messages and calls" checked={s.sounds !== false} onChange={(v) => void set({ sounds: v })} />
+    <p className="muted small" style={{ margin: 0 }}>Do Not Disturb (in your status) turns notifications off. Right-click a server or chat in the sidebar to mute just that one.</p>
+  </>;
+}
+
+function LinksTab(props: SettingsProps) {
+  const { s, set } = useSettings(props);
+  const [domain, setDomain] = useState("");
+  const trusted = s.trusted_domains ?? [];
+  return <>
+    <h2>Links & privacy</h2>
+    <Toggle label="Warn me before opening links" desc="Shows where a link really goes before you leave Jace Social" checked={s.link_warning !== false} onChange={(v) => void set({ link_warning: v })} />
+    <label>Trusted sites (no warning)</label>
+    {trusted.length === 0 && <p className="muted small" style={{ margin: 0 }}>None yet. You can trust a site from the warning, too.</p>}
+    <div className="chips">{trusted.map((d) => <span key={d} className="chip">{d} <button className="icon-btn small" onClick={() => void set({ trusted_domains: trusted.filter((x) => x !== d) })}>✕</button></span>)}</div>
+    <form style={{ display: "flex", gap: 8 }} onSubmit={(e) => { e.preventDefault(); const d = domain.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0]; if (d) { void set({ trusted_domains: [...new Set([...trusted, d])] }); setDomain(""); } }}>
+      <input placeholder="example.com" value={domain} onChange={(e) => setDomain(e.target.value)} />
+      <button className="btn" disabled={!domain.trim()}>Trust</button>
+    </form>
+    <p className="muted small" style={{ margin: 0 }}>Link previews are fetched by the Jace Social server, so websites you see previews of don't get your IP address.</p>
+  </>;
+}
+
+function AdvancedTab(props: SettingsProps) {
+  const { s, set } = useSettings(props);
+  return <>
+    <h2>Advanced</h2>
+    <Toggle label="Developer mode" desc="Show buttons to copy ids of messages, people, channels and servers (useful for bots)" checked={!!s.developer} onChange={(v) => void set({ developer: v })} />
+    {s.developer && <div className="card small">Your id: <code className="inline-code">{props.me.uuid}</code>
+      <button className="icon-btn small" onClick={() => navigator.clipboard?.writeText(props.me.uuid)}>⧉</button></div>}
+  </>;
+}
+
+/** Accounts on this device: switch with one click, add another, or remove one. */
+export function AccountSwitcher({ me, compact }: { me: Me; compact?: boolean }) {
+  const [list, setList] = useState(savedAccounts());
+  return (
+    <div className="account-list">
+      {list.map((a) => (
+        <div key={a.uuid} className={`account-row${a.uuid === me.uuid ? " current" : ""}`}>
+          <Avatar p={{ name: a.name, avatar_url: a.avatar_url }} size={compact ? 28 : 36} />
+          <div className="grow"><b>{a.name}</b>{a.is_bot && <span className="bot-tag" style={{ marginLeft: 6 }}>BOT</span>}
+            {a.uuid === me.uuid && <div className="muted small">Signed in</div>}</div>
+          {a.uuid !== me.uuid && <button className="btn small primary" onClick={() => switchAccount(a.uuid)}>Switch</button>}
+          {a.uuid !== me.uuid && <button className="icon-btn" title="Remove from this device" onClick={() => { forgetAccount(a.uuid); setList(savedAccounts()); }}>✕</button>}
+        </div>
+      ))}
+      <button className="btn small" style={{ justifySelf: "start" }} onClick={addAnotherAccount}>＋ Add an account</button>
+    </div>
   );
 }
 
@@ -295,7 +441,7 @@ export function AddServerModal({ onClose, onDone, onError, initialCode }: {
     catch (e) { onError((e as Error).message); }
   }
   async function join() {
-    const c = code.trim().replace(/^.*\/invite\//, "");
+    const c = code.trim().replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() ?? "";
     try { const r = await api<{ server: { id: string } }>(`/invites/${encodeURIComponent(c)}`, { body: {} }); onDone(r.server.id); onClose(); }
     catch (e) { onError((e as Error).message); }
   }
@@ -320,84 +466,3 @@ export function AddServerModal({ onClose, onDone, onError, initialCode }: {
   );
 }
 
-// ---------------------------------------------------------------------------------
-// Server settings (admins) / leave (members)
-// ---------------------------------------------------------------------------------
-export function ServerSettingsModal({ detail, me, onClose, onChanged, onLeft, onError }: {
-  detail: ServerDetail; me: Me; onClose: () => void; onChanged: () => void; onLeft: () => void; onError: Err;
-}) {
-  const { server, role, channels, members } = detail;
-  const admin = role !== "member";
-  const [name, setName] = useState(server.name);
-  const [desc, setDesc] = useState(server.description ?? "");
-  const [newChannel, setNewChannel] = useState("");
-  const [code, setCode] = useState(server.invite_code);
-  const link = code ? `${location.origin}/invite/${code}` : "";
-  const run = async (fn: () => Promise<unknown>) => { try { await fn(); onChanged(); } catch (e) { onError((e as Error).message); } };
-
-  return (
-    <Modal onClose={onClose} wide>
-      <div className="modal-body">
-        <h2>{server.name}</h2>
-        {admin && <>
-          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-            <Avatar p={{ name: server.name, avatar_url: server.icon_url }} size={64} />
-            <label className="btn small" style={{ textTransform: "none", color: "var(--text)", fontSize: 13 }}>
-              Change icon<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) void run(() => api(`/servers/${server.id}/icon`, { raw: f })); }} /></label>
-          </div>
-          <label>Server name<input value={name} maxLength={48} onChange={(e) => setName(e.target.value)} /></label>
-          <label>Description<textarea rows={2} value={desc} maxLength={300} onChange={(e) => setDesc(e.target.value)} /></label>
-          <button className="btn primary" style={{ justifySelf: "start" }}
-            onClick={() => run(() => api(`/servers/${server.id}`, { method: "PATCH", body: { name, description: desc } }))}>Save</button>
-
-          <label>Invite link</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input readOnly value={link} onFocus={(e) => e.target.select()} />
-            <button className="btn" onClick={() => navigator.clipboard?.writeText(link)}>Copy</button>
-            <button className="btn" onClick={async () => { try { const r = await api<{ invite_code: string }>(`/servers/${server.id}/invite`, { body: {} }); setCode(r.invite_code); } catch (e) { onError((e as Error).message); } }}>New link</button>
-          </div>
-
-          <label>Channels</label>
-          {channels.map((c) => (
-            <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="hash">#</span><span style={{ flex: 1 }}>{c.name}</span>
-              <button className="btn small" onClick={() => { const n = prompt("Channel name", c.name); if (n) void run(() => api(`/channels/${c.id}`, { method: "PATCH", body: { name: n } })); }}>Rename</button>
-              <button className="btn small" onClick={() => { const t = prompt("Channel topic", c.topic ?? ""); if (t !== null) void run(() => api(`/channels/${c.id}`, { method: "PATCH", body: { topic: t } })); }}>Topic</button>
-              <button className="btn danger small" disabled={channels.length <= 1}
-                onClick={() => { if (confirm(`Delete #${c.name} and all its messages?`)) void run(() => api(`/channels/${c.id}`, { method: "DELETE" })); }}>Delete</button>
-            </div>
-          ))}
-          <div style={{ display: "flex", gap: 8 }}>
-            <input placeholder="new-channel" value={newChannel} maxLength={48} onChange={(e) => setNewChannel(e.target.value)} />
-            <button className="btn" disabled={!newChannel.trim()}
-              onClick={() => run(async () => { await api(`/servers/${server.id}/channels`, { body: { name: newChannel } }); setNewChannel(""); })}>Add channel</button>
-          </div>
-
-          <label>Members ({members.length})</label>
-          <div style={{ maxHeight: 260, overflowY: "auto" }}>
-            {members.map((m) => (
-              <PersonRow key={m.uuid} p={m}>
-                <span className="chip">{m.role}</span>
-                {role === "owner" && m.uuid !== me.uuid && <>
-                  <button className="btn small" onClick={() => run(() => api(`/servers/${server.id}/members`, { method: "PATCH", body: { uuid: m.uuid, role: m.role === "admin" ? "member" : "admin" } }))}>
-                    {m.role === "admin" ? "Remove admin" : "Make admin"}</button>
-                  <button className="btn small" onClick={() => { if (confirm(`Give ${server.name} to ${m.name}? You'll become an admin.`)) void run(() => api(`/servers/${server.id}/members`, { method: "PATCH", body: { uuid: m.uuid, role: "owner" } })); }}>Make owner</button>
-                </>}
-                {m.uuid !== me.uuid && m.role !== "owner" && (role === "owner" || m.role === "member") && (
-                  <button className="btn danger small" onClick={() => { if (confirm(`Remove ${m.name} from the server?`)) void run(() => api(`/servers/${server.id}/members?uuid=${m.uuid}`, { method: "DELETE" })); }}>Kick</button>
-                )}
-              </PersonRow>
-            ))}
-          </div>
-        </>}
-      </div>
-      <div className="modal-foot">
-        {role === "owner"
-          ? <button className="btn danger" onClick={async () => { if (prompt(`Type the server name to delete it forever:`) === server.name) { try { await api(`/servers/${server.id}`, { method: "DELETE" }); onLeft(); onClose(); } catch (e) { onError((e as Error).message); } } }}>Delete server</button>
-          : <button className="btn danger" onClick={async () => { if (confirm(`Leave ${server.name}?`)) { try { await api(`/servers/${server.id}/members?uuid=${me.uuid}`, { method: "DELETE" }); onLeft(); onClose(); } catch (e) { onError((e as Error).message); } } }}>Leave server</button>}
-        <button className="btn" onClick={onClose}>Done</button>
-      </div>
-    </Modal>
-  );
-}

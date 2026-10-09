@@ -56,22 +56,57 @@ export type Person = {
   minecraft_name: string | null; jace_name: string | null; avatar_url: string | null;
   bio: string | null; pronouns: string | null; accent_color: string | null; links: { label: string; url: string }[];
   unread?: number; role?: "owner" | "admin" | "member";
+  banner_url?: string | null; is_bot?: boolean; bot_owner?: string | null;
+  // in a server's member list
+  nickname?: string | null; roles?: string[]; joined_at?: string; timeout_until?: string | null;
+};
+export type Settings = {
+  theme?: "dark" | "light" | "midnight" | "forest" | "system"; accent?: string | null; font_scale?: number;
+  compact?: boolean; reduce_motion?: boolean; show_embeds?: boolean; show_avatars?: boolean; sounds?: boolean;
+  desktop_notifications?: boolean; notify?: "all" | "mentions" | "none"; link_warning?: boolean;
+  trusted_domains?: string[]; muted?: string[]; time_format?: "12h" | "24h"; send_on_enter?: boolean; developer?: boolean;
 };
 export type Me = Person & {
   display_name: string | null; minecraft_linked: boolean; jace_linked: boolean; inbox: string;
-  realtime: { url: string; key: string };
+  realtime: { url: string; key: string }; settings: Settings; onboarded: boolean;
 };
+export type Role = {
+  id: string; server_id: string; name: string; color: string | null; icon: string | null; position: number;
+  permissions: number; hoist: boolean; mentionable: boolean; is_default: boolean;
+};
+export type Override = { channel_id: string; target_type: "role" | "member"; target_id: string; allow: number; deny: number };
+export type VoiceState = { channel_id: string; uuid: string; muted: boolean; deafened: boolean; streaming: boolean };
+export type Attachment = { url: string; name: string; type: string; size: number; width?: number; height?: number };
+export type Embed = { url: string; title?: string; description?: string; image?: string; site?: string; color?: string; type: "link" | "image" | "video" };
+export type Reaction = { emoji: string; count: number; me: boolean };
+export type Command = { bot: string; bot_name: string; avatar_url: string | null; name: string; description: string;
+  options: { name: string; description?: string; required?: boolean }[] };
+export type Onboarding = { question: string; multiple: boolean; options: { label: string; emoji: string | null; role_ids: string[] }[] }[];
 export type Group = { id: string; name: string; icon_url: string | null; owner: string; members: Person[]; unread: number; last_message_at: string };
 export type ServerItem = { id: string; name: string; icon_url: string | null; role: string; unread: number };
-export type Channel = { id: string; server_id: string | null; name: string; topic: string | null; unread?: number; position: number };
+export type Channel = {
+  id: string; server_id: string | null; name: string; topic: string | null; unread?: number; position: number;
+  kind?: "text" | "voice" | "announcement" | "category"; parent_id?: string | null; slowmode?: number; user_limit?: number;
+  perms?: number;
+};
+export type ServerInfo = {
+  id: string; name: string; icon_url: string | null; description: string | null; owner: string; invite_code: string | null;
+  vanity: string | null; banner_url: string | null; accent_color: string | null; rules: string | null;
+  welcome: { message?: string | null; channels?: { id: string; description?: string | null; emoji?: string | null }[] };
+  onboarding: Onboarding; system_channel: string | null; invites_paused: boolean; created_at: string;
+};
 export type ServerDetail = {
-  server: { id: string; name: string; icon_url: string | null; description: string | null; owner: string; invite_code: string | null };
-  role: "owner" | "admin" | "member"; channels: Channel[]; members: Person[];
+  server: ServerInfo; role: "owner" | "admin" | "member"; perms: number; owner: boolean; top: number;
+  roles: Role[]; channels: Channel[]; members: Person[]; overrides: Override[]; voice: VoiceState[]; onboarded: boolean;
 };
 export type Message = {
   id: number; sender: string | null; body: string; created_at: string; edited_at?: string | null; kind?: "text" | "system";
-  read_at?: string | null; recipient?: string;
+  read_at?: string | null; recipient?: string; channel_id?: string;
+  reply_to?: number | null; attachments?: Attachment[]; embeds?: Embed[]; reactions?: Reaction[];
+  mentions?: string[]; mention_roles?: string[]; mention_everyone?: boolean; pinned_at?: string | null;
+  components?: { type: string; user?: string; name?: string }[];
 };
+export type ReplyPreview = { id: number; sender: string | null; body: string; attachments: number };
 
 // --- formatting -------------------------------------------------------------------
 export const statusLabel: Record<Status, string> = {

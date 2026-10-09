@@ -6,10 +6,13 @@
 import { api } from "./client";
 
 export type CallState = "idle" | "calling" | "ringing" | "in-call";
-export type CallInfo = { state: CallState; peer: string; peerName: string; muted: boolean; startedAt: number | null; noMic: boolean };
+export type CallInfo = {
+  state: CallState; peer: string; peerName: string; muted: boolean; startedAt: number | null; noMic: boolean;
+  sharing: boolean; remoteScreen: MediaStream | null;     // screen sharing (renegotiated mid-call)
+};
 type Signal = { id: number; kind: string; call_id: string; from: string; name?: string };
 
-const IDLE: CallInfo = { state: "idle", peer: "", peerName: "", muted: false, startedAt: null, noMic: false };
+const IDLE: CallInfo = { state: "idle", peer: "", peerName: "", muted: false, startedAt: null, noMic: false, sharing: false, remoteScreen: null };
 
 function newCallId() {
   const b = new Uint8Array(12);
@@ -23,6 +26,8 @@ export class Calls {
   private offerSdp = "";
   private pc: RTCPeerConnection | null = null;
   private mic: MediaStream | null = null;
+  private screen: MediaStream | null = null;
+  private screenSenders: RTCRtpSender[] = [];
   private audio: HTMLAudioElement | null = null;
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private ring: { stop: () => void } | null = null;
@@ -77,6 +82,30 @@ export class Calls {
     this.end(reason);
   }
 
+  /** Share your screen in the call (or stop): adds/removes a video track and renegotiates. */
+  async toggleScreen() {
+    const pc = this.pc;
+    if (!pc || this.info.state !== "in-call") return;
+    if (this.screen) {
+      this.screen.getTracks().forEach((t) => t.stop());
+      for (const sender of this.screenSenders) { try { pc.removeTrack(sender); } catch { /* closed */ } }
+      this.screen = null;
+      this.screenSenders = [];
+      this.set({ ...this.info, sharing: false });
+    } else {
+      try { this.screen = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true }); } catch { return; }
+      this.screen.getVideoTracks()[0]?.addEventListener("ended", () => { if (this.screen) void this.toggleScreen(); });
+      this.screenSenders = this.screen.getTracks().map((t) => pc.addTrack(t, this.screen!));
+      this.set({ ...this.info, sharing: true });
+    }
+    try {
+      const sdp = await describe(pc, await pc.createOffer());
+      await api("/calls", { body: { to: this.info.peer, call_id: this.callId, kind: "renegotiate", sdp } });
+    } catch (e) {
+      this.onEnded((e as Error).message);
+    }
+  }
+
   toggleMute() {
     const muted = !this.info.muted;
     this.mic?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
@@ -112,6 +141,21 @@ export class Calls {
       } catch (err) {
         this.hangUp((err as Error).message);
       }
+    } else if (e.kind === "renegotiate" && this.pc) {
+      // the other side started or stopped sharing their screen
+      try {
+        const { signal } = await api<{ signal: { sdp: string } }>(`/calls?id=${e.id}`);
+        const pc = this.pc;
+        if (pc.signalingState !== "stable") await pc.setLocalDescription({ type: "rollback" });
+        await pc.setRemoteDescription({ type: "offer", sdp: signal.sdp });
+        const sdp = await describe(pc, await pc.createAnswer());
+        await api("/calls", { body: { to: this.info.peer, call_id: this.callId, kind: "reanswer", sdp } });
+      } catch (err) { console.warn("renegotiate", err); }
+    } else if (e.kind === "reanswer" && this.pc?.signalingState === "have-local-offer") {
+      try {
+        const { signal } = await api<{ signal: { sdp: string } }>(`/calls?id=${e.id}`);
+        await this.pc.setRemoteDescription({ type: "answer", sdp: signal.sdp });
+      } catch (err) { console.warn("reanswer", err); }
     } else if (e.kind === "hangup") {
       const n = this.info.peerName;
       this.end(this.info.state === "in-call" ? `${n} hung up` : this.info.state === "calling" ? `${n} didn't pick up` : "");
@@ -134,6 +178,15 @@ export class Calls {
     else pc.addTransceiver("audio", { direction: "recvonly" });
     this.set({ ...this.info, noMic: !mic });
     pc.ontrack = (ev) => {
+      if (ev.track.kind === "video") {
+        const s = ev.streams[0] ?? new MediaStream([ev.track]);
+        this.set({ ...this.info, remoteScreen: s });
+        const gone = () => { if (this.info.remoteScreen === s) this.set({ ...this.info, remoteScreen: null }); };
+        ev.track.addEventListener("ended", gone);
+        ev.track.addEventListener("mute", gone);
+        ev.track.addEventListener("unmute", () => this.set({ ...this.info, remoteScreen: s }));
+        return;
+      }
       if (!this.audio) { this.audio = new Audio(); this.audio.autoplay = true; }
       this.audio.srcObject = ev.streams[0] ?? new MediaStream([ev.track]);
       void this.audio.play().catch(() => {});
@@ -161,6 +214,9 @@ export class Calls {
     this.pc = null;
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null;
+    this.screen?.getTracks().forEach((t) => t.stop());
+    this.screen = null;
+    this.screenSenders = [];
     if (this.audio) { this.audio.srcObject = null; this.audio = null; }
     this.callId = "";
     this.offerSdp = "";

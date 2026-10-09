@@ -3,15 +3,9 @@
 // a member. The owner and the administrator permission can do everything.
 import { ApiError, db } from "./server";
 
-export const P = {
-  VIEW: 1, SEND: 2, ATTACH: 4, REACT: 8, MENTION_EVERYONE: 16, MANAGE_MESSAGES: 32,
-  MANAGE_CHANNELS: 64, MANAGE_ROLES: 128, MANAGE_SERVER: 256, KICK: 512, BAN: 1024,
-  INVITE: 2048, CHANGE_NICK: 4096, MANAGE_NICKS: 8192, CONNECT: 16384, SPEAK: 32768,
-  STREAM: 65536, TIMEOUT: 131072, MANAGE_BOTS: 262144, ADMIN: 1073741824,
-} as const;
-export const ALL = Object.values(P).reduce((a, b) => a | b, 0);
-/** What @everyone can do in a new server. */
-export const DEFAULT_EVERYONE = P.VIEW | P.SEND | P.ATTACH | P.REACT | P.INVITE | P.CHANGE_NICK | P.CONNECT | P.SPEAK | P.STREAM;
+import { ALL, DEFAULT_EVERYONE, has, P } from "./permbits";
+
+export { ALL, DEFAULT_EVERYONE, has, P };
 
 const LABEL: Record<number, string> = {
   [P.VIEW]: "see this", [P.SEND]: "send messages", [P.ATTACH]: "attach files", [P.REACT]: "add reactions",
@@ -63,8 +57,6 @@ export async function serverCtx(serverId: string, uuid: string): Promise<ServerC
   const top = owner ? Infinity : Math.max(0, ...all.filter((r) => myRoles.includes(r.id)).map((r) => r.position));
   return { server, uuid, owner, roles: all, myRoles, base, top, nickname: member.nickname ?? null, timeoutUntil: member.timeout_until ?? null };
 }
-
-export const has = (perms: number, p: number) => (perms & p) === p;
 
 /** Permissions in one channel: server permissions, then the channel's overrides (or its category's). */
 export function channelPerms(ctx: ServerCtx, channel: ChannelRow, overrides: Override[]): number {

@@ -1,19 +1,28 @@
 "use client";
-// The Jace Social app: friends, direct messages, group chats and servers.
-// The desktop app shows this same page (with a small bridge for Microsoft sign-in and notifications).
+// The Jace Social app: friends, direct messages, group chats, servers, voice and bots.
+// The desktop app shows this same page (with a small bridge for Microsoft sign-in,
+// notifications and updates).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, connectLive, desktop, desktopReady, getToken, inDesktop, joinAddress, setToken, statusLabel, type Group, type Me, type Person,
-  type ServerDetail, type ServerItem,
+  api, connectLive, desktop, desktopReady, getToken, inDesktop, joinAddress, setToken, statusLabel, type Channel, type Group,
+  type Me, type Person, type ServerDetail, type ServerItem, type Settings,
 } from "@/lib/client";
+import { rememberAccount } from "@/lib/accounts";
 import { Calls } from "@/lib/calls";
+import { has, P } from "@/lib/permbits";
+import { applySettings } from "@/lib/theme";
+import { Voice } from "@/lib/voice";
 import { CallPanel, useCall } from "./CallPanel";
+import { ChannelSettings } from "./ChannelSettings";
 import { Chat } from "./Chat";
+import { LinkGuard } from "./Markdown";
+import { nameStyle } from "./Message";
 import { MinecraftDevice } from "./MinecraftDevice";
+import { AccountSwitcher, AddServerModal, NewGroupModal, ProfileModal, SettingsModal, StatusEditor, type SettingsTab } from "./Modals";
+import { ServerOnboarding, Welcome } from "./Onboarding";
+import { inviteLink, ServerSettings } from "./ServerSettings";
 import { ActivityCard, Avatar, PersonRow } from "./ui";
-import {
-  AddServerModal, NewGroupModal, ProfileModal, ServerSettingsModal, SettingsModal, StatusEditor,
-} from "./Modals";
+import { useVoice, VoiceBar, VoiceRoom, VoiceUsers } from "./Voice";
 
 type FriendsData = { friends: Person[]; incoming: Person[]; outgoing: Person[] };
 type View =
@@ -21,6 +30,9 @@ type View =
   | { kind: "dm"; uuid: string }
   | { kind: "group"; id: string }
   | { kind: "server"; id: string; channel?: string };
+type ModalState =
+  | { kind: "settings"; tab?: SettingsTab } | { kind: "group" } | { kind: "server" } | { kind: "serverSettings"; tab?: "invites" }
+  | { kind: "channel"; channel: Channel } | { kind: "status" } | { kind: "welcome" } | null;
 
 export default function SocialApp({ inviteCode }: { inviteCode?: string }) {
   const [token, setTok] = useState<string | null>(null);
@@ -39,16 +51,30 @@ export default function SocialApp({ inviteCode }: { inviteCode?: string }) {
 
   useEffect(() => {
     if (!token) return;
-    api<Me>("/me").then(setMe).catch((e) => {
+    api<Me>("/me").then((m) => {
+      setMe(m);
+      rememberAccount({ uuid: m.uuid, name: m.name, avatar_url: m.avatar_url, is_bot: m.is_bot });   // for the account switcher
+    }).catch((e) => {
       if (e.status === 401) { setToken(null); setTok(null); } else setError(e.message);
     });
   }, [token]);
 
+  useEffect(() => { if (me) applySettings(me.settings ?? {}); }, [me?.settings]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!ready) return null;
   if (!token) return <SignIn error={error} inviteCode={inviteCode} />;
   if (!me) return <div className="center"><div className="muted">{error || "Loading Jace Social…"}</div></div>;
-  return <Main me={me} setMe={setMe} inviteCode={inviteCode}
-    signOut={async () => { await api("/auth/signout", { body: {} }).catch(() => {}); setToken(null); setTok(null); setMe(null); }} />;
+  return (
+    <LinkGuard warn={me.settings?.link_warning !== false} trusted={me.settings?.trusted_domains ?? []}
+      onTrust={(d) => {
+        const trusted = [...new Set([...(me.settings?.trusted_domains ?? []), d])];
+        setMe({ ...me, settings: { ...me.settings, trusted_domains: trusted } });
+        void api<Me>("/me", { method: "PATCH", body: { settings: { trusted_domains: trusted } } }).then(setMe).catch(() => {});
+      }}>
+      <Main me={me} setMe={setMe} inviteCode={inviteCode}
+        signOut={async () => { await api("/auth/signout", { body: {} }).catch(() => {}); setToken(null); setTok(null); setMe(null); }} />
+    </LinkGuard>
+  );
 }
 
 function SignIn({ error, inviteCode }: { error: string; inviteCode?: string }) {
@@ -91,6 +117,23 @@ function SignIn({ error, inviteCode }: { error: string; inviteCode?: string }) {
   );
 }
 
+
+/** A soft "ding" for messages and mentions (Settings -> Notifications -> Sounds). */
+function ding(high = false) {
+  try {
+    const ctx = new AudioContext();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = high ? 1046 : 784;
+    g.gain.setValueAtTime(0.06, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    o.connect(g).connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.35);
+    setTimeout(() => void ctx.close(), 600);
+  } catch { /* no audio */ }
+}
+
+const COLLAPSED = "jace_social_collapsed";
+
 function Main({ me, setMe, signOut, inviteCode }: {
   me: Me; setMe: (m: Me) => void; signOut: () => void; inviteCode?: string;
 }) {
@@ -101,28 +144,47 @@ function Main({ me, setMe, signOut, inviteCode }: {
   const [detail, setDetail] = useState<ServerDetail | null>(null);
   const [reload, setReload] = useState(0);              // bump to reload the open chat
   const [profile, setProfile] = useState<string | null>(null);
-  const [modal, setModal] = useState<"settings" | "group" | "server" | "serverSettings" | "status" | null>(inviteCode ? "server" : null);
+  const [modal, setModal] = useState<ModalState>(inviteCode ? { kind: "server" } : !me.onboarded && !me.is_bot ? { kind: "welcome" } : null);
   const [toast, setToast] = useState("");
   const [mobileMain, setMobileMain] = useState(false);
+  const [typing, setTyping] = useState<Record<string, Record<string, { name: string; until: number }>>>({});
+  const [pins, setPins] = useState(false);
+  const [showMembers, setShowMembers] = useState(true);
+  const [menu, setMenu] = useState<"account" | "server" | null>(null);
+  const [collapsed, setCollapsed] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(COLLAPSED) ?? "[]"); } catch { return []; } });
+  const [groupCall, setGroupCall] = useState<Record<string, number>>({});
   const viewRef = useRef(view);
   viewRef.current = view;
+  const settings: Settings = me.settings ?? {};
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const err = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(""), 5000); }, []);
   const meRef = useRef(me);
   meRef.current = me;
-  const notifyUser = useCallback((title: string, body: string) => {
-    if (meRef.current.status === "dnd" || document.hasFocus()) return;
+  /** Pop-up + sound, following your settings (Do Not Disturb, mentions only, muted chats). */
+  const notifyUser = useCallback((title: string, body: string, opts: { important?: boolean; muteKey?: string[] } = {}) => {
+    const s = settingsRef.current;
+    if (meRef.current.status === "dnd" || s.notify === "none") return;
+    if (s.notify === "mentions" && !opts.important) return;
+    if (opts.muteKey?.some((k) => s.muted?.includes(k)) && !opts.important) return;
+    if (document.hasFocus()) return;
+    if (s.sounds !== false) ding(opts.important);
+    if (s.desktop_notifications === false) return;
     const d = desktop();
     if (d) d.notify(title, body);
     else if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body });
   }, []);
-  const [calls] = useState(() => new Calls(err, (name) => notifyUser(`${name} is calling`, "Open Jace Social to answer")));
+  const [calls] = useState(() => new Calls(err, (name) => notifyUser(`${name} is calling`, "Open Jace Social to answer", { important: true })));
   const call = useCall(calls);
+  const [voice] = useState(() => new Voice(err));
+  const room = useVoice(voice);
   useEffect(() => {
-    const bye = () => calls.hangUp();
+    const bye = () => { calls.hangUp(); void voice.leave(); };
     window.addEventListener("pagehide", bye);
     return () => { window.removeEventListener("pagehide", bye); bye(); };
-  }, [calls]);
+  }, [calls, voice]);
+
   const loadFriends = useCallback(() => api<FriendsData>("/friends").then(setFriends).catch((e) => err(e.message)), [err]);
   const loadGroups = useCallback(() => api<{ groups: Group[] }>("/groups").then((d) => setGroups(d.groups)).catch((e) => err(e.message)), [err]);
   const loadServers = useCallback(() => api<{ servers: ServerItem[] }>("/servers").then((d) => setServers(d.servers)).catch((e) => err(e.message)), [err]);
@@ -133,6 +195,9 @@ function Main({ me, setMe, signOut, inviteCode }: {
       return d;
     } catch (e) { err((e as Error).message); setView({ kind: "home" }); return null; }
   }, [err]);
+  const loadGroupCall = useCallback(async (id: string) => {
+    try { const r = await api<{ participants: unknown[] }>(`/channels/${id}/voice`); setGroupCall((g) => ({ ...g, [id]: r.participants.length })); } catch { /* not a member */ }
+  }, []);
 
   useEffect(() => { void loadFriends(); void loadGroups(); void loadServers(); }, [loadFriends, loadGroups, loadServers]);
 
@@ -153,7 +218,7 @@ function Main({ me, setMe, signOut, inviteCode }: {
     return () => { clearInterval(t); window.removeEventListener("pagehide", bye); };
   }, []);
 
-  // live updates
+  // everyone we know: friends, group members, the open server's members (with nicknames and roles)
   const people = useMemo(() => {
     const m: Record<string, Person> = {};
     for (const f of [...friends.friends, ...friends.incoming, ...friends.outgoing]) m[f.uuid] = f;
@@ -161,45 +226,84 @@ function Main({ me, setMe, signOut, inviteCode }: {
     for (const p of detail?.members ?? []) m[p.uuid] = p;
     return m;
   }, [friends, groups, detail]);
-  const peopleRef = useRef(people);
-  peopleRef.current = people;
 
+  // live updates
   useEffect(() => {
     let presenceTimer: ReturnType<typeof setTimeout> | null = null;
+    let detailTimer: ReturnType<typeof setTimeout> | null = null;
+    const refreshDetail = (id: string) => {
+      if (detailTimer) return;
+      detailTimer = setTimeout(() => { detailTimer = null; if (viewRef.current.kind === "server" && viewRef.current.id === id) void loadDetail(id); }, 400);
+    };
     return connectLive(me.realtime, me.inbox, (event, p) => {
       const v = viewRef.current;
       if (event === "message") {
         if (v.kind === "dm" && v.uuid === p.from) setReload((n) => n + 1);
-        else notifyUser(`${p.name ?? "A friend"}`, "Sent you a message");
+        else notifyUser(`${p.name ?? "A friend"}`, "Sent you a message", { important: true, muteKey: [p.from] });
+        clearTyping(`dm:${p.from}`, p.from);
         void loadFriends();
+      } else if (event === "dm_update") {
+        if (v.kind === "dm" && (v.uuid === p.from || v.uuid === p.with)) setReload((n) => n + 1);
       } else if (event === "friends") {
         void loadFriends();
-        if (p.kind === "request") notifyUser("Friend request", `${p.name} wants to be friends`);
+        if (p.kind === "request") notifyUser("Friend request", `${p.name} wants to be friends`, { important: true });
       } else if (event === "presence") {
         if (!presenceTimer) presenceTimer = setTimeout(() => { presenceTimer = null; void loadFriends(); }, 1500);
       } else if (event === "channel") {
         const open = (v.kind === "group" && v.id === p.channel_id) || (v.kind === "server" && v.channel === p.channel_id);
         if (open) setReload((n) => n + 1);
-        else if (!p.edited && !p.deleted && p.name) notifyUser(p.name, p.server_id ? "New message in a server" : "New message in a group");
-        if (p.server_id) { void loadServers(); if (v.kind === "server" && v.id === p.server_id) void loadDetail(p.server_id); }
+        else if (!p.edited && !p.deleted && !p.reacted && p.name) {
+          notifyUser(p.name, p.mentioned ? "Mentioned you" : p.server_id ? "New message in a server" : "New message in a group",
+            { important: !!p.mentioned || !p.server_id, muteKey: [p.channel_id, p.server_id].filter(Boolean) });
+        }
+        if (p.from) clearTyping(`ch:${p.channel_id}`, p.from);
+        if (p.server_id) { void loadServers(); if (v.kind === "server" && v.id === p.server_id) refreshDetail(p.server_id); }
         else void loadGroups();
+      } else if (event === "typing") {
+        const key = p.dm ? `dm:${p.from}` : `ch:${p.channel_id}`;
+        setTyping((t) => ({ ...t, [key]: { ...(t[key] ?? {}), [p.from]: { name: p.name, until: Date.now() + 8000 } } }));
       } else if (event === "groups") {
         void loadGroups();
       } else if (event === "servers") {
         void loadServers();
         if (v.kind === "server" && v.id === p.server_id) {
-          if (p.kind === "deleted" || p.kind === "removed") setView({ kind: "home" });
-          else void loadDetail(p.server_id);
+          if (p.kind === "deleted" || p.kind === "removed") { setView({ kind: "home" }); if (room.channelId) void voice.refresh(); }
+          else refreshDetail(p.server_id);
         }
+      } else if (event === "voice") {
+        void voice.refresh();
+        if (p.server_id && v.kind === "server" && v.id === p.server_id) refreshDetail(p.server_id);
+        if (!p.server_id) void loadGroupCall(p.channel_id);
+      } else if (event === "voice_signal") {
+        void voice.onSignal(p as { id: number; from: string; kind: string; channel_id: string });
       } else if (event === "call") {
         void calls.onSignal(p);
       }
     });
-  }, [me.realtime, me.inbox, notifyUser, calls, loadFriends, loadGroups, loadServers, loadDetail]);
+    function clearTyping(key: string, from: string) {
+      setTyping((t) => { if (!t[key]?.[from]) return t; const c = { ...t[key] }; delete c[from]; return { ...t, [key]: c }; });
+    }
+  }, [me.realtime, me.inbox, notifyUser, calls, voice, loadFriends, loadGroups, loadServers, loadDetail, loadGroupCall]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // unread badge for the desktop app / tab title
-  const unread = friends.friends.reduce((n, f) => n + (f.unread ?? 0), 0) + friends.incoming.length
-    + groups.reduce((n, g) => n + g.unread, 0) + servers.reduce((n, s) => n + s.unread, 0);
+  // typing indicators fade after 8 seconds
+  useEffect(() => {
+    const t = setInterval(() => setTyping((all) => {
+      const now = Date.now();
+      let changed = false;
+      const out: typeof all = {};
+      for (const [k, v] of Object.entries(all)) {
+        out[k] = Object.fromEntries(Object.entries(v).filter(([, x]) => x.until > now));
+        if (Object.keys(out[k]).length !== Object.keys(v).length) changed = true;
+      }
+      return changed ? out : all;
+    }), 2000);
+    return () => clearInterval(t);
+  }, []);
+
+  // unread badge for the desktop app / tab title (muted chats don't count)
+  const muted = settings.muted ?? [];
+  const unread = friends.friends.reduce((n, f) => n + (muted.includes(f.uuid) ? 0 : f.unread ?? 0), 0) + friends.incoming.length
+    + groups.reduce((n, g) => n + (muted.includes(g.id) ? 0 : g.unread), 0) + servers.reduce((n, s) => n + (muted.includes(s.id) ? 0 : s.unread), 0);
   useEffect(() => {
     document.title = unread ? `(${unread}) Jace Social` : "Jace Social";
     desktop()?.setUnread(unread);
@@ -208,15 +312,70 @@ function Main({ me, setMe, signOut, inviteCode }: {
   async function openServer(id: string, channel?: string) {
     const d = await loadDetail(id);
     if (!d) return;
-    setView({ kind: "server", id, channel: channel ?? d.channels[0]?.id });
+    const first = d.channels.find((c) => c.kind === "text" || c.kind === "announcement" || !c.kind);
+    setView({ kind: "server", id, channel: channel ?? first?.id });
+    setPins(false);
     setMobileMain(true);
   }
 
-  const go = (v: View) => { setView(v); setMobileMain(v.kind !== "home" || true); };
+  const toggleMute = async (key: string) => {
+    const next = muted.includes(key) ? muted.filter((m) => m !== key) : [...muted, key];
+    setMe({ ...me, settings: { ...settings, muted: next } });
+    try { setMe(await api<Me>("/me", { method: "PATCH", body: { settings: { muted: next } } })); } catch (e) { err((e as Error).message); }
+  };
+  const toggleCategory = (id: string) => {
+    const next = collapsed.includes(id) ? collapsed.filter((x) => x !== id) : [...collapsed, id];
+    setCollapsed(next);
+    try { localStorage.setItem(COLLAPSED, JSON.stringify(next)); } catch { /* fine */ }
+  };
+
+  const go = (v: View) => { setView(v); setPins(false); setMobileMain(true); if (v.kind === "group") void loadGroupCall(v.id); };
   const dmPerson = view.kind === "dm" ? people[view.uuid] : undefined;
   const group = view.kind === "group" ? groups.find((g) => g.id === view.id) : undefined;
   const channel = view.kind === "server" ? detail?.channels.find((c) => c.id === view.channel) : undefined;
-  const showRight = view.kind === "server" || view.kind === "group" || view.kind === "dm";
+  const showRight = (view.kind === "server" && showMembers && channel?.kind !== "voice") || view.kind === "group" || view.kind === "dm";
+  const typingIn = (key: string) => Object.values(typing[key] ?? {}).map((t) => t.name);
+  const perms = detail?.perms ?? 0;
+  const canManageChannels = has(perms, P.MANAGE_CHANNELS);
+  const joinVoice = (c: Channel) => {
+    if (!detail) return;
+    void voice.join(me.uuid, c.id, detail.server.id, c.name);
+    setView({ kind: "server", id: detail.server.id, channel: c.id });
+    setMobileMain(true);
+  };
+
+  // the server's channel list: channels without a category first, then each category
+  const tree = useMemo(() => {
+    if (!detail) return [];
+    const chans = [...detail.channels].sort((a, b) => a.position - b.position);
+    const loose = chans.filter((c) => c.kind !== "category" && !c.parent_id);
+    const cats = chans.filter((c) => c.kind === "category");
+    return [{ cat: null as Channel | null, items: loose }, ...cats.map((cat) => ({ cat, items: chans.filter((c) => c.parent_id === cat.id) }))];
+  }, [detail]);
+
+  const channelButton = (c: Channel) => {
+    const isVoice = c.kind === "voice";
+    const users = isVoice ? (room.channelId === c.id ? room.participants.map((p) => ({ uuid: p.uuid, muted: p.muted, deafened: p.deafened, streaming: p.streaming }))
+      : (detail?.voice ?? []).filter((v) => v.channel_id === c.id)) : [];
+    const mutedChan = muted.includes(c.id);
+    return (
+      <div key={c.id}>
+        <div className={`side-item channel-item${view.kind === "server" && view.channel === c.id ? " active" : ""}${c.unread && !mutedChan ? " unread" : ""}${mutedChan ? " muted-chan" : ""}`}
+          onClick={() => {
+            if (isVoice) { if (room.channelId !== c.id && has(c.perms ?? 0, P.CONNECT)) joinVoice(c); else go({ kind: "server", id: detail!.server.id, channel: c.id }); return; }
+            go({ kind: "server", id: detail!.server.id, channel: c.id });
+            void loadDetail(detail!.server.id);
+          }}
+          onContextMenu={(e) => { e.preventDefault(); void toggleMute(c.id); err(mutedChan ? `Unmuted ${c.name}` : `Muted ${c.name}`); }}>
+          <span className="hash">{isVoice ? "🔊" : c.kind === "announcement" ? "📣" : "#"}</span>
+          <span className="name">{c.name}</span>
+          {!!c.unread && !mutedChan && view.kind === "server" && view.channel !== c.id && <span className="badge">{c.unread}</span>}
+          {canManageChannels && <button className="icon-btn hover-only" title="Channel settings" onClick={(e) => { e.stopPropagation(); setModal({ kind: "channel", channel: c }); }}>⚙</button>}
+        </div>
+        {isVoice && <VoiceUsers users={users} people={{ ...people, [me.uuid]: { ...me, ...(people[me.uuid] ?? {}) } }} speaking={room.speaking} />}
+      </div>
+    );
+  };
 
   return (
     <div className={`app${showRight ? "" : " no-right"}${mobileMain ? " show-main" : ""}`}>
@@ -229,33 +388,73 @@ function Main({ me, setMe, signOut, inviteCode }: {
         </button>
         <div className="rail-sep" />
         {servers.map((s) => (
-          <button key={s.id} className={`rail-item${view.kind === "server" && view.id === s.id ? " active" : ""}`} title={s.name}
-            onClick={() => openServer(s.id)}>
+          <button key={s.id} className={`rail-item${view.kind === "server" && view.id === s.id ? " active" : ""}${muted.includes(s.id) ? " muted-chan" : ""}`} title={s.name}
+            onClick={() => openServer(s.id)}
+            onContextMenu={(e) => { e.preventDefault(); void toggleMute(s.id); err(muted.includes(s.id) ? `Unmuted ${s.name}` : `Muted ${s.name}`); }}>
             {s.icon_url ? <img src={s.icon_url} alt="" /> : s.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 3)}
-            {s.unread > 0 && <span className="badge">{s.unread > 99 ? "99+" : s.unread}</span>}
+            {s.unread > 0 && !muted.includes(s.id) && <span className="badge">{s.unread > 99 ? "99+" : s.unread}</span>}
           </button>
         ))}
-        <button className="rail-item rail-add" title="Create or join a server" onClick={() => setModal("server")}>+</button>
+        <button className="rail-item rail-add" title="Create or join a server" onClick={() => setModal({ kind: "server" })}>+</button>
         <UpdateButton />
       </nav>
 
       {/* sidebar */}
       <aside className="sidebar">
         {view.kind === "server" && detail ? <>
-          <div className="side-head">
+          {detail.server.banner_url && <div className="side-banner" style={{ backgroundImage: `url(${detail.server.banner_url})` }} />}
+          <div className="side-head clickable" onClick={() => setMenu(menu === "server" ? null : "server")} style={detail.server.accent_color ? { boxShadow: `inset 0 -2px ${detail.server.accent_color}` } : undefined}>
             <span className="grow">{detail.server.name}</span>
-            <button className="icon-btn" title="Server settings" onClick={() => setModal("serverSettings")}>⚙</button>
+            <span className="muted">{menu === "server" ? "✕" : "▾"}</span>
           </div>
+          {menu === "server" && (
+            <div className="menu server-menu" onMouseLeave={() => setMenu(null)}>
+              {has(perms, P.INVITE) && <button onClick={() => { setMenu(null); setModal({ kind: "serverSettings", tab: "invites" }); }}>👋 Invite people</button>}
+              <button onClick={() => { setMenu(null); setModal({ kind: "serverSettings" }); }}>⚙ Server settings</button>
+              {canManageChannels && <button onClick={async () => {
+                setMenu(null);
+                const name = prompt("New channel name");
+                if (!name) return;
+                const kind = confirm("Make it a voice channel? (OK = voice, Cancel = text)") ? "voice" : "text";
+                try { await api(`/servers/${detail.server.id}/channels`, { body: { name, kind } }); await loadDetail(detail.server.id); } catch (e) { err((e as Error).message); }
+              }}>＃ Create channel</button>}
+              {canManageChannels && <button onClick={async () => {
+                setMenu(null);
+                const name = prompt("New category name");
+                if (!name) return;
+                try { await api(`/servers/${detail.server.id}/channels`, { body: { name, kind: "category" } }); await loadDetail(detail.server.id); } catch (e) { err((e as Error).message); }
+              }}>📁 Create category</button>}
+              <button onClick={() => { setMenu(null); void toggleMute(detail.server.id); }}>{muted.includes(detail.server.id) ? "🔔 Unmute server" : "🔕 Mute server"}</button>
+              {settings.developer && <button onClick={() => { setMenu(null); void navigator.clipboard?.writeText(detail.server.id); }}># Copy server ID</button>}
+              {!detail.owner && <button style={{ color: "var(--red)" }} onClick={async () => {
+                setMenu(null);
+                if (!confirm(`Leave ${detail.server.name}?`)) return;
+                try { await api(`/servers/${detail.server.id}/members?uuid=${me.uuid}`, { method: "DELETE" }); setView({ kind: "home" }); setDetail(null); void loadServers(); } catch (e) { err((e as Error).message); }
+              }}>🚪 Leave server</button>}
+            </div>
+          )}
           <div className="side-scroll">
             {detail.server.description && <p className="muted small" style={{ margin: "4px 8px 8px" }}>{detail.server.description}</p>}
-            <div className="side-label">Text channels</div>
-            {detail.channels.map((c) => (
-              <button key={c.id} className={`side-item${view.channel === c.id ? " active" : ""}${c.unread ? " unread" : ""}`}
-                onClick={() => { setView({ kind: "server", id: view.id, channel: c.id }); setMobileMain(true); void loadDetail(view.id); }}>
-                <span className="hash">#</span><span className="name">{c.name}</span>
-                {!!c.unread && view.channel !== c.id && <span className="badge">{c.unread}</span>}
-              </button>
-            ))}
+            {tree.map(({ cat, items }) => (cat || items.length) ? (
+              <div key={cat?.id ?? "loose"}>
+                {cat && (
+                  <div className="side-label category" onClick={() => toggleCategory(cat.id)}>
+                    <span>{collapsed.includes(cat.id) ? "›" : "⌄"} {cat.name}</span>
+                    <span>
+                      {canManageChannels && <button className="icon-btn hover-only" title="Create a channel here" onClick={async (e) => {
+                        e.stopPropagation();
+                        const name = prompt(`New channel in ${cat.name}`);
+                        if (!name) return;
+                        const kind = /voice/i.test(cat.name) ? "voice" : "text";
+                        try { await api(`/servers/${detail.server.id}/channels`, { body: { name, kind, parent_id: cat.id } }); await loadDetail(detail.server.id); } catch (er) { err((er as Error).message); }
+                      }}>＋</button>}
+                      {canManageChannels && <button className="icon-btn hover-only" title="Category settings" onClick={(e) => { e.stopPropagation(); setModal({ kind: "channel", channel: cat }); }}>⚙</button>}
+                    </span>
+                  </div>
+                )}
+                {items.filter((c) => !cat || !collapsed.includes(cat.id) || (view.kind === "server" && view.channel === c.id) || room.channelId === c.id).map(channelButton)}
+              </div>
+            ) : null)}
           </div>
         </> : <>
           <div className="side-head"><span className="grow">Jace Social</span></div>
@@ -265,33 +464,52 @@ function Main({ me, setMe, signOut, inviteCode }: {
               {friends.incoming.length > 0 && <span className="badge">{friends.incoming.length}</span>}
             </button>
             <div className="side-label">Group chats
-              <button className="icon-btn" title="New group chat" onClick={() => setModal("group")}>＋</button></div>
+              <button className="icon-btn" title="New group chat" onClick={() => setModal({ kind: "group" })}>＋</button></div>
             {groups.length === 0 && <p className="muted small" style={{ margin: "0 8px" }}>None yet</p>}
             {groups.map((g) => (
-              <button key={g.id} className={`side-item${view.kind === "group" && view.id === g.id ? " active" : ""}${g.unread ? " unread" : ""}`}
-                onClick={() => go({ kind: "group", id: g.id })}>
+              <button key={g.id} className={`side-item${view.kind === "group" && view.id === g.id ? " active" : ""}${g.unread && !muted.includes(g.id) ? " unread" : ""}${muted.includes(g.id) ? " muted-chan" : ""}`}
+                onClick={() => go({ kind: "group", id: g.id })}
+                onContextMenu={(e) => { e.preventDefault(); void toggleMute(g.id); err(muted.includes(g.id) ? `Unmuted ${g.name}` : `Muted ${g.name}`); }}>
                 <Avatar p={{ name: g.name, avatar_url: g.icon_url }} size={32} />
-                <span className="name">{g.name}<span className="sub">{g.members.length} members</span></span>
-                {g.unread > 0 && <span className="badge">{g.unread}</span>}
+                <span className="name">{g.name}<span className="sub">{room.channelId === g.id ? "🔊 In a call" : `${g.members.length} members`}</span></span>
+                {g.unread > 0 && !muted.includes(g.id) && <span className="badge">{g.unread}</span>}
               </button>
             ))}
             <div className="side-label">Direct messages</div>
             {sortFriends(friends.friends).map((f) => (
-              <button key={f.uuid} className={`side-item${view.kind === "dm" && view.uuid === f.uuid ? " active" : ""}${f.unread ? " unread" : ""}`}
-                onClick={() => go({ kind: "dm", uuid: f.uuid })}>
+              <button key={f.uuid} className={`side-item${view.kind === "dm" && view.uuid === f.uuid ? " active" : ""}${f.unread && !muted.includes(f.uuid) ? " unread" : ""}${muted.includes(f.uuid) ? " muted-chan" : ""}`}
+                onClick={() => go({ kind: "dm", uuid: f.uuid })}
+                onContextMenu={(e) => { e.preventDefault(); void toggleMute(f.uuid); err(muted.includes(f.uuid) ? `Unmuted ${f.name}` : `Muted ${f.name}`); }}>
                 <Avatar p={f} size={32} status={f.status} />
-                <span className="name">{f.name}<span className="sub">{shortLine(f)}</span></span>
-                {!!f.unread && <span className="badge">{f.unread}</span>}
+                <span className="name">{f.name}<span className="sub">{typingIn(`dm:${f.uuid}`).length ? "typing…" : shortLine(f)}</span></span>
+                {!!f.unread && !muted.includes(f.uuid) && <span className="badge">{f.unread}</span>}
               </button>
             ))}
           </div>
         </>}
+        <VoiceBar voice={voice} state={room} onOpen={() => {
+          if (!room.channelId) return;
+          if (room.serverId) void openServer(room.serverId, room.channelId);
+          else go({ kind: "group", id: room.channelId });
+        }} />
         <div className="me-panel">
-          <Avatar p={me} size={34} status={me.status === "invisible" ? "offline" : me.status} />
-          <div className="who" onClick={() => setModal("status")} title="Set status">
-            <b>{me.name}</b><span>{me.custom_status ? `${me.status_emoji ?? ""} ${me.custom_status}` : statusLabel[me.status]}</span>
+          <span onClick={() => setMenu(menu === "account" ? null : "account")} style={{ cursor: "pointer" }} title="Switch accounts">
+            <Avatar p={me} size={34} status={me.status === "invisible" ? "offline" : me.status} /></span>
+          <div className="who" onClick={() => setModal({ kind: "status" })} title="Set status">
+            <b>{me.name}{me.is_bot && <span className="bot-tag" style={{ marginLeft: 6 }}>BOT</span>}</b>
+            <span>{me.custom_status ? `${me.status_emoji ?? ""} ${me.custom_status}` : statusLabel[me.status]}</span>
           </div>
-          <button className="icon-btn" title="Settings" onClick={() => setModal("settings")}>⚙</button>
+          <button className="icon-btn" title="Settings" onClick={() => setModal({ kind: "settings" })}>⚙</button>
+          {menu === "account" && (
+            <div className="menu account-menu" onMouseLeave={() => setMenu(null)}>
+              <AccountSwitcher me={me} compact />
+              <hr />
+              <button onClick={() => { setMenu(null); setModal({ kind: "status" }); }}>🟢 Set status</button>
+              <button onClick={() => { setMenu(null); setModal({ kind: "settings" }); }}>⚙ Settings</button>
+              {settings.developer && <button onClick={() => { setMenu(null); void navigator.clipboard?.writeText(me.uuid); }}># Copy my ID</button>}
+              <button style={{ color: "var(--red)" }} onClick={signOut}>Sign out</button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -307,30 +525,51 @@ function Main({ me, setMe, signOut, inviteCode }: {
             <span className="topic">{shortLine(dmPerson)}</span>
             {Calls.supported() && <button className="icon-btn" title={`Voice call ${dmPerson.name}`} aria-label="Start a voice call"
               disabled={call.state !== "idle"} onClick={() => void calls.call(dmPerson.uuid, dmPerson.name)}>📞</button>}
+            <button className="icon-btn" title={muted.includes(dmPerson.uuid) ? "Unmute" : "Mute"} onClick={() => void toggleMute(dmPerson.uuid)}>{muted.includes(dmPerson.uuid) ? "🔕" : "🔔"}</button>
           </div>
-          <Chat target={{ kind: "dm", uuid: dmPerson.uuid, name: dmPerson.name }} me={me} people={people} canModerate={false}
-            reloadKey={reload} onOpenProfile={setProfile} onError={err} placeholder={`Message ${dmPerson.name}`} />
+          <Chat target={{ kind: "dm", uuid: dmPerson.uuid, name: dmPerson.name }} me={me} people={people} reloadKey={reload}
+            onOpenProfile={setProfile} onError={err} placeholder={`Message ${dmPerson.name}`} settings={settings} typing={typingIn(`dm:${dmPerson.uuid}`)} />
         </>}
         {view.kind === "group" && group && <>
           <div className="main-head">
             <button className="icon-btn mobile-only" onClick={() => setMobileMain(false)}>←</button>
             <Avatar p={{ name: group.name, avatar_url: group.icon_url }} size={26} />
             <span className="title">{group.name}</span><span className="spacer" />
+            <button className={`btn small${room.channelId === group.id ? " primary" : ""}`} onClick={() => room.channelId === group.id ? void voice.leave() : void voice.join(me.uuid, group.id, null, group.name)}>
+              {room.channelId === group.id ? "Leave call" : groupCall[group.id] ? `📞 Join call (${groupCall[group.id]})` : "📞 Start a call"}</button>
+            <button className="icon-btn" title="Pinned messages" onClick={() => setPins(!pins)}>📌</button>
             <GroupMenu group={group} me={me} friends={friends.friends} onError={err} onChanged={loadGroups}
               onLeft={() => { setView({ kind: "home" }); void loadGroups(); }} />
           </div>
+          {room.channelId === group.id && (
+            <div className="group-call"><VoiceRoom voice={voice} state={room} channelId={group.id} channelName={group.name} people={people} me={me} canJoin onJoin={() => {}} /></div>
+          )}
           <Chat target={{ kind: "channel", id: group.id, name: group.name, isServer: false }} me={me} people={people}
-            canModerate={false} reloadKey={reload} onOpenProfile={setProfile} onError={err} placeholder={`Message ${group.name}`} />
+            reloadKey={reload} onOpenProfile={setProfile} onError={err} placeholder={`Message ${group.name}`} settings={settings}
+            typing={typingIn(`ch:${group.id}`)} showPins={pins} onClosePins={() => setPins(false)} />
         </>}
-        {view.kind === "server" && channel && detail && <>
+        {view.kind === "server" && channel && detail && channel.kind === "voice" && (
+          <>
+            <div className="main-head">
+              <button className="icon-btn mobile-only" onClick={() => setMobileMain(false)}>←</button>
+              <span className="hash">🔊</span><span className="title">{channel.name}</span><span className="spacer" />
+            </div>
+            <VoiceRoom voice={voice} state={room} channelId={channel.id} channelName={channel.name} people={people} me={me}
+              canJoin={has(channel.perms ?? 0, P.CONNECT)} onJoin={() => joinVoice(channel)} />
+          </>
+        )}
+        {view.kind === "server" && channel && detail && channel.kind !== "voice" && <>
           <div className="main-head">
             <button className="icon-btn mobile-only" onClick={() => setMobileMain(false)}>←</button>
-            <span className="hash">#</span><span className="title">{channel.name}</span>
-            {channel.topic && <span className="topic">{channel.topic}</span>}
+            <span className="hash">{channel.kind === "announcement" ? "📣" : "#"}</span><span className="title">{channel.name}</span>
+            {channel.topic ? <span className="topic">{channel.topic}</span> : <span className="spacer" />}
+            {!!channel.slowmode && <span className="muted small" title="Slowmode">🐢 {channel.slowmode}s</span>}
+            <button className="icon-btn" title="Pinned messages" onClick={() => setPins(!pins)}>📌</button>
+            <button className={`icon-btn${showMembers ? " on" : ""}`} title="Members" onClick={() => setShowMembers(!showMembers)}>👥</button>
           </div>
-          <Chat target={{ kind: "channel", id: channel.id, name: channel.name, isServer: true }} me={me} people={people}
-            canModerate={detail.role !== "member"} reloadKey={reload} onOpenProfile={setProfile} onError={err}
-            placeholder={`Message #${channel.name}`} />
+          <Chat target={{ kind: "channel", id: channel.id, name: channel.name, isServer: true, slowmode: channel.slowmode, announcement: channel.kind === "announcement" }}
+            me={me} people={people} roles={detail.roles} perms={channel.perms} reloadKey={reload} onOpenProfile={setProfile} onError={err}
+            placeholder={`Message #${channel.name}`} settings={settings} typing={typingIn(`ch:${channel.id}`)} showPins={pins} onClosePins={() => setPins(false)} />
         </>}
         {view.kind === "server" && !channel && <div className="empty">No channels yet</div>}
       </main>
@@ -339,30 +578,64 @@ function Main({ me, setMe, signOut, inviteCode }: {
       {showRight && (
         <aside className="right">
           {view.kind === "dm" && dmPerson && <ProfileCard p={dmPerson} onOpen={() => setProfile(dmPerson.uuid)} />}
-          {view.kind === "group" && group && <MemberList members={group.members} onOpen={setProfile} />}
-          {view.kind === "server" && detail && <MemberList members={detail.members} onOpen={setProfile} />}
+          {view.kind === "group" && group && <MemberList members={group.members} roles={[]} onOpen={setProfile} />}
+          {view.kind === "server" && detail && <MemberList members={detail.members} roles={detail.roles} owner={detail.server.owner} onOpen={setProfile} />}
         </aside>
       )}
 
       {profile && <ProfileModal uuid={profile} onClose={() => setProfile(null)} onError={err}
-        onMessage={(p) => go({ kind: "dm", uuid: p.uuid })} onChanged={loadFriends} />}
-      {modal === "settings" && <SettingsModal me={me} onClose={() => setModal(null)} onSaved={setMe} onSignOut={signOut} onError={err} />}
-      {modal === "status" && <StatusModal me={me} onClose={() => setModal(null)} onSaved={setMe} onError={err} />}
-      {modal === "group" && <NewGroupModal friends={friends.friends} onClose={() => setModal(null)} onError={err}
+        detail={view.kind === "server" ? detail : null} me={me}
+        onMessage={(p) => go({ kind: "dm", uuid: p.uuid })} onChanged={() => { void loadFriends(); if (detail) void loadDetail(detail.server.id); }} />}
+      {modal?.kind === "settings" && <SettingsModal me={me} initialTab={modal.tab} onClose={() => setModal(null)} onSaved={setMe} onSignOut={signOut} onError={err} />}
+      {modal?.kind === "status" && <StatusModal me={me} onClose={() => setModal(null)} onSaved={setMe} onError={err} />}
+      {modal?.kind === "welcome" && <Welcome me={me} onDone={() => setModal(null)} onSaved={setMe} onError={err} onJoinServer={() => setModal({ kind: "server" })} />}
+      {modal?.kind === "group" && <NewGroupModal friends={friends.friends} onClose={() => setModal(null)} onError={err}
         onCreated={async (id) => { await loadGroups(); go({ kind: "group", id }); }} />}
-      {modal === "server" && <AddServerModal initialCode={inviteCode} onClose={() => setModal(null)} onError={err}
+      {modal?.kind === "server" && <AddServerModal initialCode={inviteCode} onClose={() => setModal(null)} onError={err}
         onDone={async (id) => { await loadServers(); await openServer(id); if (inviteCode) history.replaceState(null, "", "/app"); }} />}
-      {modal === "serverSettings" && detail && <ServerSettingsModal detail={detail} me={me} onClose={() => setModal(null)} onError={err}
+      {modal?.kind === "serverSettings" && detail && <ServerSettings detail={detail} me={me} startTab={modal.tab} onClose={() => setModal(null)} onError={err}
         onChanged={() => { void loadDetail(detail.server.id); void loadServers(); }}
         onLeft={() => { setView({ kind: "home" }); setDetail(null); void loadServers(); }} />}
+      {modal?.kind === "channel" && detail && <ChannelSettings detail={detail} channel={detail.channels.find((c) => c.id === modal.channel.id) ?? modal.channel}
+        onClose={() => setModal(null)} onError={err} onChanged={() => void loadDetail(detail.server.id)} />}
+      {view.kind === "server" && detail && !detail.onboarded && !modal && (
+        <ServerOnboarding detail={detail} onError={err} onDone={() => void loadDetail(detail.server.id)}
+          onOpenChannel={(id) => setView({ kind: "server", id: detail.server.id, channel: id })} />
+      )}
       <CallPanel calls={calls} info={call} people={people} />
-      {toast && <div role="alert" style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#3a2222",
-        border: "1px solid #6b3433", padding: "10px 16px", borderRadius: 10, zIndex: 60, maxWidth: "90vw" }}>{toast}</div>}
+      {toast && <div role="alert" className="toast">{toast}</div>}
     </div>
   );
 }
 
-/** In the desktop app: a green "update" button in the rail when a new version is out. */
+/** Members, grouped like Discord: roles shown separately (highest first), then online, then offline. */
+function MemberList({ members, roles, owner, onOpen }: { members: Person[]; roles: ServerDetail["roles"]; owner?: string; onOpen: (uuid: string) => void }) {
+  const hoisted = roles.filter((r) => r.hoist && !r.is_default).sort((a, b) => b.position - a.position);
+  const groupOf = (m: Person) => (m.online ? hoisted.find((r) => m.roles?.includes(r.id))?.id ?? "online" : "offline");
+  const sections: [string, string, Person[]][] = [
+    ...hoisted.map((r) => [r.id, r.name, members.filter((m) => groupOf(m) === r.id)] as [string, string, Person[]]),
+    ["online", "Online", members.filter((m) => groupOf(m) === "online")],
+    ["offline", "Offline", members.filter((m) => groupOf(m) === "offline")],
+  ];
+  return <>{sections.filter(([, , list]) => list.length).map(([key, title, list]) => (
+    <div key={key}>
+      <div className="side-label">{title} — {list.length}</div>
+      {[...list].sort((a, b) => (a.nickname || a.name).localeCompare(b.nickname || b.name)).map((m) => {
+        const ns = nameStyle(m, roles);
+        return (
+          <button key={m.uuid} className="side-item" onClick={() => onOpen(m.uuid)} style={{ opacity: m.online ? 1 : 0.55 }}>
+            <Avatar p={m} size={32} status={m.status} />
+            <span className="name"><span style={{ color: ns.color }}>{ns.name}</span>
+              {m.is_bot && <span className="bot-tag" style={{ marginLeft: 5 }}>BOT</span>}
+              {m.uuid === owner && <span title="Owner"> 👑</span>}
+              <span className="sub">{shortLine(m)}</span></span>
+          </button>
+        );
+      })}
+    </div>
+  ))}</>;
+}
+
 function UpdateButton() {
   const [latest, setLatest] = useState<string | null>(null);
   useEffect(() => {
@@ -424,22 +697,6 @@ function ProfileCard({ p, onOpen }: { p: Person; onOpen: () => void }) {
       </div>
     </div>
   );
-}
-
-function MemberList({ members, onOpen }: { members: Person[]; onOpen: (uuid: string) => void }) {
-  const online = members.filter((m) => m.online);
-  const offline = members.filter((m) => !m.online);
-  const section = (title: string, list: Person[]) => list.length > 0 && <>
-    <div className="side-label">{title} — {list.length}</div>
-    {list.sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
-      <button key={m.uuid} className="side-item" onClick={() => onOpen(m.uuid)} style={{ opacity: m.online ? 1 : 0.55 }}>
-        <Avatar p={m} size={32} status={m.status} />
-        <span className="name">{m.name}{m.role && m.role !== "member" && <span className="muted small"> {m.role === "owner" ? "👑" : "★"}</span>}
-          <span className="sub">{shortLine(m)}</span></span>
-      </button>
-    ))}
-  </>;
-  return <>{section("Online", online)}{section("Offline", offline)}</>;
 }
 
 function GroupMenu({ group, me, friends, onError, onChanged, onLeft }: {
@@ -552,3 +809,4 @@ function FriendsHome({ data, reload, onError, onOpen, onMessage, onCall, back }:
     </div>
   </>;
 }
+
