@@ -9,8 +9,29 @@ function own(p: Profile) {
     display_name: p.display_name ?? null,
     minecraft_linked: p.mc_linked !== false, jace_linked: !!p.jace_sub, jace_name: p.jace_name ?? null,
     inbox: p.inbox, realtime: { url: supabaseUrl(), key: process.env.SUPABASE_PUBLISHABLE_KEY },
+    settings: p.settings ?? {}, onboarded: !!p.onboarded_at || !!p.is_bot,
   };
 }
+
+// Private settings that follow you to every device. Unknown keys are dropped.
+const SETTINGS: Record<string, (v: unknown) => unknown> = {
+  theme: (v) => (["dark", "light", "midnight", "forest", "system"].includes(String(v)) ? v : "dark"),
+  accent: (v) => (/^#[0-9a-fA-F]{6}$/.test(String(v)) ? v : null),
+  font_scale: (v) => Math.max(0.8, Math.min(1.4, Number(v) || 1)),
+  compact: (v) => Boolean(v),
+  reduce_motion: (v) => Boolean(v),
+  show_embeds: (v) => v !== false,
+  show_avatars: (v) => v !== false,
+  sounds: (v) => v !== false,
+  desktop_notifications: (v) => v !== false,
+  notify: (v) => (["all", "mentions", "none"].includes(String(v)) ? v : "all"),
+  link_warning: (v) => v !== false,
+  trusted_domains: (v) => (Array.isArray(v) ? v.map((d) => String(d).toLowerCase().trim()).filter((d) => /^[a-z0-9.-]{1,253}$/.test(d)).slice(0, 100) : []),
+  muted: (v) => (Array.isArray(v) ? v.map(String).filter((x) => /^[0-9a-f-]{32,36}$/.test(x)).slice(0, 500) : []),
+  time_format: (v) => (["12h", "24h"].includes(String(v)) ? v : "12h"),
+  send_on_enter: (v) => v !== false,
+  developer: (v) => Boolean(v),
+};
 
 export const GET = handler(async (req) => own(await me(req)));
 
@@ -50,6 +71,14 @@ export const PATCH = handler(async (req) => {
       return { label: label || new URL(url).hostname.replace(/^www\./, ""), url };
     });
   }
+  if ("settings" in b) {
+    const incoming = (b.settings ?? {}) as Record<string, unknown>;
+    const merged: Record<string, unknown> = { ...(p.settings ?? {}) };
+    for (const [k, v] of Object.entries(incoming)) if (SETTINGS[k]) merged[k] = SETTINGS[k](v);
+    if (JSON.stringify(merged).length > 16_000) throw new ApiError(400, "Too many settings");
+    patch.settings = merged;
+  }
+  if (b.onboarded === true) patch.onboarded_at = p.onboarded_at ?? new Date().toISOString();
   if (!Object.keys(patch).length) throw new ApiError(400, "Nothing to change");
   const { data, error } = await db().from("profiles").update(patch).eq("uuid", p.uuid).select("*").single();
   if (error) throw error;

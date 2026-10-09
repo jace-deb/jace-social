@@ -32,6 +32,8 @@ export type Profile = {
   display_name?: string | null; avatar_url?: string | null; bio?: string | null; pronouns?: string | null;
   accent_color?: string | null; links?: { label: string; url: string }[];
   status?: Status; custom_status?: string | null; status_emoji?: string | null;
+  is_bot?: boolean; bot_owner?: string | null; bot_public?: boolean; bot_commands?: unknown[]; bot_program?: unknown;
+  bot_enabled?: boolean; banner_url?: string | null; settings?: Record<string, unknown>; onboarded_at?: string | null;
 };
 export type Status = "online" | "idle" | "dnd" | "invisible";
 /**
@@ -166,6 +168,7 @@ export function publicProfile(p: Profile) {
     jace_name: p.jace_name ?? null,
     avatar_url: avatarFor(p),
     bio: p.bio ?? null, pronouns: p.pronouns ?? null, accent_color: p.accent_color ?? null, links: p.links ?? [],
+    banner_url: p.banner_url ?? null, is_bot: !!p.is_bot, bot_owner: p.is_bot ? p.bot_owner ?? null : null,
   };
 }
 
@@ -198,4 +201,13 @@ export function cleanUuid(u: unknown): string {
   const s = String(u ?? "").replace(/-/g, "").toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(s)) throw new ApiError(400, "Bad player id");
   return s;
+}
+
+/** Merge one player into another (account linking). Roles, reactions and bots move first
+ *  (004_community.sql), then everything else (003_social.sql), which deletes src. */
+export async function mergeProfiles(src: string, dst: string) {
+  const extra = await db().rpc("merge_profiles_extra", { src, dst });
+  if (extra.error && !/merge_profiles_extra/.test(extra.error.message)) throw extra.error;   // 004 not run yet: skip
+  const { error } = await db().rpc("merge_profiles", { src, dst });
+  if (error) throw error;
 }

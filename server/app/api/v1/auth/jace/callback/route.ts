@@ -1,9 +1,7 @@
 // Jace sends the browser back here with ?code&state. We finish sign-in or linking,
 // then either redirect the web app (token in the #fragment, never in logs) or show
 // "you can close this tab" while the app picks the result up by polling.
-import {
-  ApiError, createSession, db, newPlayerId, siteUrl, supabaseUrl, token, type Profile,
-} from "@/lib/server";
+import { ApiError, createSession, db, mergeProfiles, newPlayerId, siteUrl, supabaseUrl, token, type Profile } from "@/lib/server";
 import { jaceUserFromCode, type JaceUser } from "@/lib/jace";
 
 type Req = { state: string; purpose: "signin" | "link"; link_uuid: string | null; poll_hash: string | null; return_to: string };
@@ -54,8 +52,7 @@ async function link(u: JaceUser, uuid: string) {
   const { data: other } = await db().from("profiles").select("uuid, mc_linked").eq("jace_sub", u.sub).maybeSingle();
   if (other && other.uuid !== uuid) {
     if (other.mc_linked) throw new ApiError(409, "That Jace account is already linked to another Minecraft account");
-    const { error } = await db().rpc("merge_profiles", { src: other.uuid, dst: uuid });   // Jace-only account joins this one
-    if (error) throw error;
+    await mergeProfiles(other.uuid, uuid);   // the Jace-only account joins this one
   }
   const { error } = await db().from("profiles").update({ jace_sub: u.sub, jace_name: u.username }).eq("uuid", uuid);
   if (error) throw error;

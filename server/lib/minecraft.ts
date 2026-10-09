@@ -7,7 +7,7 @@
 // "joined server" check), this means the server briefly holds the player's Microsoft
 // and Minecraft tokens. It uses them once to read the profile and never stores them.
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { ApiError, db, ensureProfile, type Profile } from "./server";
+import { ApiError, ensureProfile, mergeProfiles, type Profile } from "./server";
 
 // Microsoft's own public client (Minecraft for Nintendo Switch), which allows the
 // device code flow for Xbox Live; no Azure app registration needed.
@@ -118,7 +118,6 @@ export async function linkMinecraft(p: Profile, mc: { id: string; name: string }
   if (mcProfile.jace_sub && mcProfile.jace_sub !== p.jace_sub)
     throw new ApiError(409, "That Minecraft account is already linked to another Jace account");
   // the Jace-only account moves into the Minecraft one (its sessions too, so this token keeps working)
-  const { error } = await db().rpc("merge_profiles", { src: p.uuid, dst: mc.id });
-  if (error) throw error;
+  await mergeProfiles(p.uuid, mc.id);
   return { ok: true, uuid: mc.id };
 }

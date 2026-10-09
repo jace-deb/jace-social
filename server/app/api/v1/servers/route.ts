@@ -2,6 +2,7 @@
 // POST {name}: create a server (you're the owner; it starts with #general)
 import { ApiError, body, db, handler, me } from "@/lib/server";
 import { MAX_SERVERS, cleanName, inviteCode, postMessage, unreadCounts, type Channel } from "@/lib/chat";
+import { createDefaultRole } from "@/lib/perms";
 
 export const GET = handler(async (req) => {
   const p = await me(req);
@@ -26,8 +27,13 @@ export const POST = handler(async (req) => {
   if ((count ?? 0) >= MAX_SERVERS) throw new ApiError(400, `You can be in up to ${MAX_SERVERS} servers`);
   const { data: s, error } = await db().from("servers").insert({ name, owner: p.uuid, invite_code: inviteCode() }).select("*").single();
   if (error) throw error;
-  await db().from("server_members").insert({ server_id: s.id, uuid: p.uuid, role: "owner" });
-  const { data: ch } = await db().from("channels").insert({ server_id: s.id, name: "general", position: 0 }).select("*").single();
-  await postMessage(ch as Channel, [p.uuid], null, `Welcome to ${name}! Invite friends with the code ${s.invite_code}`, "system");
+  await db().from("server_members").insert({ server_id: s.id, uuid: p.uuid, role: "owner", onboarded: true });
+  await createDefaultRole(s.id);
+  const { data: cat } = await db().from("channels").insert({ server_id: s.id, name: "Text channels", kind: "category", position: 0 }).select("id").single();
+  const { data: ch } = await db().from("channels").insert({ server_id: s.id, name: "general", position: 1, parent_id: cat?.id ?? null }).select("*").single();
+  const { data: vcat } = await db().from("channels").insert({ server_id: s.id, name: "Voice channels", kind: "category", position: 2 }).select("id").single();
+  await db().from("channels").insert({ server_id: s.id, name: "General", kind: "voice", position: 3, parent_id: vcat?.id ?? null });
+  await db().from("servers").update({ system_channel: ch.id }).eq("id", s.id);
+  await postMessage(ch as Channel, [p.uuid], null, `Welcome to ${name}! Invite friends with the link jace-social.vercel.app/${s.invite_code}`, "system");
   return { server: s };
 });

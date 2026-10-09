@@ -1,31 +1,58 @@
-// GET ?before=<id>: 50 newest messages (oldest first) with the senders' profiles
-// POST {body}: send a message to a group chat or server channel
+// GET ?before=<id>&around=<id>: 50 messages (oldest first) with senders, reactions and replied-to messages
+// POST {body, reply_to?, attachments?}: send a message to a group chat or server channel
 import { ApiError, body, db, handler, me } from "@/lib/server";
-import { channelFor, postMessage, profilesById } from "@/lib/chat";
+import { MESSAGE_COLUMNS, channelFor, postMessage, profilesById, type Attachment } from "@/lib/chat";
+import { has, P } from "@/lib/perms";
+import { reactionsFor, repliedTo } from "@/lib/reactions";
+import { cleanAttachments } from "@/lib/uploads";
 
 export const GET = handler(async (req, ctx) => {
   const p = await me(req);
-  const { channel } = await channelFor((await ctx.params).id, p.uuid);
-  const before = Number(new URL(req.url).searchParams.get("before"));
-  let q = db().from("channel_messages").select("id, channel_id, sender, body, kind, created_at, edited_at")
+  const { channel, perms } = await channelFor((await ctx.params).id, p.uuid);
+  const params = new URL(req.url).searchParams;
+  const before = Number(params.get("before"));
+  let q = db().from("channel_messages").select(MESSAGE_COLUMNS)
     .eq("channel_id", channel.id).order("id", { ascending: false }).limit(50);
   if (before) q = q.lt("id", before);
   const { data, error } = await q;
   if (error) throw error;
-  const msgs = (data ?? []).reverse();
-  const people = await profilesById([...new Set(msgs.map((m) => m.sender).filter(Boolean) as string[])]);
-  return { channel, messages: msgs, people };
+  const msgs = (data ?? []).reverse() as unknown as { id: number; sender: string | null; reply_to: number | null }[];
+  const replies = await repliedTo("channel_messages", msgs.map((m) => m.reply_to));
+  const replied = Object.values(replies) as { sender: string | null }[];
+  const senders = [...msgs.map((m) => m.sender), ...replied.map((r) => r.sender)].filter(Boolean) as string[];
+  const [people, reactions] = await Promise.all([
+    profilesById([...new Set(senders)]),
+    reactionsFor("c", msgs.map((m) => m.id), p.uuid),
+  ]);
+  return {
+    channel, perms, people, replies,
+    messages: msgs.map((m) => ({ ...m, reactions: reactions[m.id] ?? [] })),
+  };
 });
 
 export const POST = handler(async (req, ctx) => {
   const p = await me(req);
-  const { channel, members } = await channelFor((await ctx.params).id, p.uuid);
-  const text = String((await body<{ body?: string }>(req)).body ?? "").trim();
-  if (!text) throw new ApiError(400, "Message is empty");
+  const { channel, members, ctx: server, perms } = await channelFor((await ctx.params).id, p.uuid);
+  if (channel.kind === "category" || channel.kind === "voice") throw new ApiError(400, "You can't send messages there");
+  if (server?.timeoutUntil && new Date(server.timeoutUntil) > new Date())
+    throw new ApiError(403, `You're timed out until ${new Date(server.timeoutUntil).toLocaleString()}`);
+  if (!has(perms, P.SEND) || (channel.kind === "announcement" && !has(perms, P.MANAGE_MESSAGES)))
+    throw new ApiError(403, "You can't send messages in this channel");
+  const b = await body<{ body?: string; reply_to?: number; attachments?: Attachment[] }>(req);
+  const text = String(b.body ?? "").trim();
+  const attachments = cleanAttachments(b.attachments, p.uuid);
+  if (attachments.length && !has(perms, P.ATTACH)) throw new ApiError(403, "You can't attach files here");
+  if (!text && !attachments.length) throw new ApiError(400, "Message is empty");
   if (text.length > 2000) throw new ApiError(400, "Messages can be up to 2000 characters");
   const minuteAgo = new Date(Date.now() - 60_000).toISOString();
   const { count } = await db().from("channel_messages").select("id", { count: "exact", head: true })
     .eq("sender", p.uuid).gt("created_at", minuteAgo);
   if ((count ?? 0) >= 30) throw new ApiError(429, "Slow down a little - try again in a minute");
-  return { message: await postMessage(channel, members, p, text) };
+  if (channel.slowmode && !has(perms, P.MANAGE_MESSAGES)) {
+    const since = new Date(Date.now() - channel.slowmode * 1000).toISOString();
+    const { count: recent } = await db().from("channel_messages").select("id", { count: "exact", head: true })
+      .eq("channel_id", channel.id).eq("sender", p.uuid).gt("created_at", since);
+    if (recent) throw new ApiError(429, `Slowmode is on: one message every ${channel.slowmode} seconds`);
+  }
+  return { message: await postMessage(channel, members, p, text, "text", { reply_to: b.reply_to ? Number(b.reply_to) : null, attachments, perms }) };
 });
