@@ -8,6 +8,7 @@ Versions already on the store are skipped. Needs Jace Store's dependencies
 migration (008) for --depends.
 """
 import json
+import os
 import re
 import subprocess
 import sys
@@ -16,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "packaging" / "jace-store.mjs"
-SLUG = "jace-friends"
+SLUG = os.environ.get("JACE_STORE_PROJECT", "jace-social-minecraft")
 LOADERS = {"fabric": ["fabric", "quilt"], "neoforge": ["neoforge"], "forge": ["forge"]}
 # Jace Store lists these on the project page, and Jace Launcher installs them with the mod.
 # (e4all is left out where stonecutter.properties.toml has a blank deps.e4all: it doesn't work there)
