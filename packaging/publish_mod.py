@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "packaging" / "jace-store.mjs"
-SLUG = "SLUG = os.environ.get("JACE_STORE_PROJECT", "jace-social-minecraft")"
+SLUG = "jace-social-minecraft"
 LOADERS = {"fabric": ["fabric", "quilt"], "neoforge": ["neoforge"], "forge": ["forge"]}
 # Jace Store lists these on the project page, and Jace Launcher installs them with the mod.
 # (e4all is left out where stonecutter.properties.toml has a blank deps.e4all: it doesn't work there)
