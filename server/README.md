@@ -5,7 +5,8 @@ Jace Launcher, the desktop app and the Jace Social mod all talk to it. It's a Ne
 
 ## How it works
 
-- **Sign-in:** works like joining a Minecraft server. The server hands out a one-time id, the client tells Mojang it "joined" it, and the server asks Mojang to confirm (`hasJoined`). Only the real account owner can do that. Minecraft tokens never reach this server, and only Microsoft accounts work.
+- **Minecraft sign-in in the browser:** browsers can't talk to Xbox Live, so the web app uses Microsoft's device code flow. You enter a code at microsoft.com/link, and the server swaps the result for your Minecraft profile (Microsoft → Xbox Live → Minecraft). Unlike the other sign-ins, the server briefly holds those tokens. It uses them once to read the profile and never stores them (`lib/minecraft.ts`).
+- **Sign-in (desktop app, Jace Launcher, mod):** works like joining a Minecraft server. The server hands out a one-time id, the client tells Mojang it "joined" it, and the server asks Mojang to confirm (`hasJoined`). Only the real account owner can do that. Minecraft tokens never reach this server, and only Microsoft accounts work.
 - **Database access:** every table has row-level security on and no policies, so only the server (secret key) can read or write. Players go through `/api/v1/*` with a bearer token.
 - **Live updates:** each player has a private, unguessable Supabase Realtime channel. Broadcasts only say what changed (never message text), and clients then fetch through the API.
 - **Hosted worlds:** the mod opens your world to LAN, the e4all mod gives it a public address, and the address is shared with friends through your status.
@@ -32,6 +33,9 @@ Jace Launcher, the desktop app and the Jace Social mod all talk to it. It's a Ne
 |---|---|---|
 | POST | `auth/start` → `{server_id}` | step 1 of sign-in (no auth) |
 | POST | `auth/finish` `{name, server_id}` | step 2: returns `{token, uuid, inbox, realtime}` |
+| POST | `auth/minecraft` → `{user_code, verification_uri, ticket}` | browser Minecraft sign-in (no auth) |
+| POST | `auth/minecraft/poll` `{ticket}` | `{pending}` until the code is entered, then like `auth/finish` |
+| POST | `link/minecraft/device`, `link/minecraft/device/poll` `{ticket}` | the same, to link Minecraft to a signed-in Jace account |
 | POST | `auth/signout` | |
 | GET | `me` | |
 | GET | `friends` | friends with status and unread counts, plus incoming and outgoing requests |

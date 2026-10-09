@@ -24,7 +24,7 @@ One account, the same friends everywhere.
 
 Sign in with a **Jace** account (in the browser and the desktop app) or with **Minecraft** (in Jace Launcher, the desktop app and the mod). Link them so both work:
 - **Jace Launcher:** Settings → Jace Social → **Link Jace**
-- **Desktop app or web:** Settings → Linked accounts. **Link Minecraft** is only in the desktop app, because Microsoft sign-in can't run in a browser tab.
+- **Desktop app or web:** Settings → Linked accounts. In the browser, Minecraft sign-in and linking use a code you enter at microsoft.com/link.
 
 If both accounts already had friends or chats, linking merges them into one.
 

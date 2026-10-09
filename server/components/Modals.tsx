@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { MinecraftDevice } from "./MinecraftDevice";
 import {
   api, desktopReady, getToken, inDesktop, since, statusLabel, type Me, type Person, type ServerDetail, type Status, type DesktopBridge,
 } from "@/lib/client";
@@ -75,6 +76,7 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
   });
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [linking, setLinking] = useState(false);
 
   async function save() {
     setBusy(true);
@@ -180,10 +182,11 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError }: {
             </div>
             <div className="card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1 }}><b>Minecraft</b><div className="muted small">{me.minecraft_linked ? me.minecraft_name : "Not linked"}</div></div>
-              {!me.minecraft_linked && (inDesktop()
-                ? <button className="btn primary small" onClick={linkMinecraft}>Link Minecraft</button>
-                : <span className="muted small" style={{ maxWidth: 220 }}>Link in the Jace Social desktop app, or in Jace Launcher (Settings → Link Jace)</span>)}
+              {!me.minecraft_linked && !linking &&
+                <button className="btn primary small" onClick={() => inDesktop() ? linkMinecraft() : setLinking(true)}>Link Minecraft</button>}
             </div>
+            {linking && <div className="card"><MinecraftDevice mode="link" onCancel={() => setLinking(false)}
+              onDone={async () => { setLinking(false); onSaved(await api<Me>("/me")); setNote("Minecraft linked!"); }} /></div>}
             {note && <div className="muted small">{note}</div>}
           </>}
         </div>

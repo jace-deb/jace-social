@@ -182,3 +182,8 @@ textarea { resize: vertical; }
 .call-who b, .call-who span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .call-who span { color: var(--muted); font-size: 13px; }
 @media (max-width: 700px) { .call-panel { left: 16px; right: 16px; bottom: 16px; } .call-who { flex: 1; } }
+
+/* Minecraft sign-in with a device code */
+.mc-device { text-align: center; }
+.mc-code { font: 800 34px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 6px; padding: 14px;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; user-select: all; }

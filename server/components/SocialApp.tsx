@@ -9,6 +9,7 @@ import {
 import { Calls } from "@/lib/calls";
 import { CallPanel, useCall } from "./CallPanel";
 import { Chat } from "./Chat";
+import { MinecraftDevice } from "./MinecraftDevice";
 import { ActivityCard, Avatar, PersonRow } from "./ui";
 import {
   AddServerModal, NewGroupModal, ProfileModal, ServerSettingsModal, SettingsModal, StatusEditor,
@@ -55,6 +56,7 @@ function SignIn({ error, inviteCode }: { error: string; inviteCode?: string }) {
   const [app, setApp] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
+  const [device, setDevice] = useState(false);
   useEffect(() => { setApp(inDesktop()); }, []);
   async function minecraft() {
     setBusy(true); setProblem("");
@@ -62,6 +64,14 @@ function SignIn({ error, inviteCode }: { error: string; inviteCode?: string }) {
     const r = d ? await d.signInMinecraft() : { error: "The desktop app isn't ready yet - try again" };
     setBusy(false);
     if (r.token) { setToken(r.token); location.reload(); } else setProblem(r.error ?? "Sign-in failed");
+  }
+  if (device) {
+    return (
+      <div className="center"><div className="signin">
+        <MinecraftDevice<{ token: string }> mode="signin" onCancel={() => setDevice(false)}
+          onDone={(r) => { setToken(r.token); location.href = back; }} />
+      </div></div>
+    );
   }
   return (
     <div className="center">
@@ -74,8 +84,8 @@ function SignIn({ error, inviteCode }: { error: string; inviteCode?: string }) {
         {app
           ? <button className="btn" style={{ display: "block", width: "100%", padding: 12 }} disabled={busy} onClick={minecraft}>
               {busy ? "Signing in…" : "⛏ Sign in with Minecraft"}</button>
-          : <p className="muted small">Minecraft player? Sign in with Minecraft in Jace Launcher or the Jace Social desktop app,
-              then use <b>Link Jace</b> so you can sign in here too.</p>}
+          : <button className="btn" style={{ display: "block", width: "100%", padding: 12 }} onClick={() => setDevice(true)}>
+              ⛏ Sign in with Minecraft</button>}
       </div>
     </div>
   );
