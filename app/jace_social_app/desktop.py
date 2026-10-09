@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from jace_social_app import APP_ID, APP_NAME, APP_RELEASE_DATE, APP_VERSION, AUTHOR, DATA_DIR, WEBSITE, macinstall, wininstall
+from jace_social_app import APP_ID, APP_NAME, APP_RELEASE_DATE, APP_VERSION, AUTHOR, DATA_DIR, URL_SCHEME, WEBSITE, macinstall, wininstall
 
 ASSETS = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent)) / "assets"
 ICON_SRC = ASSETS / "icon.png"
@@ -194,6 +194,7 @@ def _desktop_entry(exe: Path, args: str = "") -> str:
             f"Icon={APP_ID}\n"
             "Terminal=false\n"
             "Categories=Network;Chat;InstantMessaging;\n"
+            f"MimeType=x-scheme-handler/{URL_SCHEME};\n"
             "Keywords=minecraft;friends;chat;voice;call;servers;\n"
             f"StartupWMClass={APP_ID}\n"
             "Actions=uninstall;\n\n"
@@ -230,6 +231,13 @@ def metainfo() -> str:
   <releases><release version="{APP_VERSION}" date="{APP_RELEASE_DATE}"/></releases>
 </component>
 """
+
+
+def _register_links():
+    """jacesocial:// links (from invite pages) open in this app."""
+    if shutil.which("xdg-mime"):
+        subprocess.run(["xdg-mime", "default", MENU_FILE.name, f"x-scheme-handler/{URL_SCHEME}"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
 def _refresh_menus():
@@ -302,6 +310,8 @@ def install(target_dir: Path = DEFAULT_DIR, menu=True, desktop=True, startup=Tru
         done.append("appstream")
 
     _refresh_menus()
+    if menu:
+        _register_links()
     write_json(RECORD, {"path": str(exe), "version": APP_VERSION, "parts": done})
     status("Done")
     return exe

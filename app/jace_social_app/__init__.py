@@ -11,6 +11,7 @@ AUTHOR = "jace.deb"
 GITHUB_REPO = "jace-deb/jace-social"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 WEBSITE = "https://jace-deb.github.io/jace-social/"
+URL_SCHEME = "jacesocial"          # jacesocial://invite/<code> opens an invite in the app
 
 
 def _data_dir() -> Path:

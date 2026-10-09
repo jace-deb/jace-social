@@ -17,7 +17,7 @@ from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEnginePermission, QWebE
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QDialog, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout
 
-from jace_social_app import APP_ID, APP_NAME, APP_VERSION, DATA_DIR, desktop, macinstall, minecraft, updater, wininstall
+from jace_social_app import APP_ID, APP_NAME, APP_VERSION, DATA_DIR, URL_SCHEME, desktop, macinstall, minecraft, updater, wininstall
 from jace_social_app.installer import SetupWizard, confirm_uninstall, run_windows_update, update_app
 
 BASE = os.environ.get("JACE_SOCIAL_URL", "https://jace-social.vercel.app").rstrip("/")
@@ -331,6 +331,16 @@ class Window(QMainWindow):
         if self.tray:
             self.tray.setToolTip(f"{APP_NAME} - {n} unread" if n else APP_NAME)
 
+    def open_link(self, link: str):
+        """jacesocial://invite/<code> (from an invite page): show that invite in the app."""
+        url = QUrl(link)
+        if url.scheme() != URL_SCHEME:
+            return
+        parts = [p for p in (url.host() + url.path()).split("/") if p]
+        if len(parts) == 2 and parts[0] == "invite" and all(c.isalnum() or c in "-_" for c in parts[1]) and len(parts[1]) <= 32:
+            self.view.setUrl(QUrl(f"{BASE}/invite/{parts[1]}"))
+        self.bring_up()
+
     def bring_up(self):
         self.show()
         self.setWindowState((self.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
@@ -362,6 +372,26 @@ def _qwebchannel_js() -> str:
     if f.open(QIODevice.OpenModeFlag.ReadOnly):
         return bytes(f.readAll()).decode()
     raise RuntimeError("qwebchannel.js is missing from this Qt build")
+
+
+class LinkApp(QApplication):
+    """macOS delivers jacesocial:// links as open-URL events instead of arguments."""
+
+    def __init__(self, argv):
+        super().__init__(argv)
+        self.window = None
+        self.pending_links: list[str] = []
+
+    def event(self, e):
+        from PySide6.QtCore import QEvent
+        if e.type() == QEvent.Type.FileOpen and e.url().scheme() == URL_SCHEME:
+            link = e.url().toString()
+            if self.window:
+                self.window.open_link(link)
+            else:
+                self.pending_links.append(link)
+            return True
+        return super().event(e)
 
 
 def self_test(app) -> int:
@@ -447,7 +477,7 @@ def main():
     QApplication.setApplicationDisplayName(APP_NAME)
     QApplication.setOrganizationName("jace-social")
     QApplication.setDesktopFileName(APP_ID)
-    app = QApplication(sys.argv)
+    app = LinkApp(sys.argv)
     app.setStyle("Fusion")
     app.setWindowIcon(QIcon(str(desktop.ICON_SRC)))
     if "--self-test" in argv:
@@ -476,13 +506,15 @@ def main():
             return
     app.setQuitOnLastWindowClosed(False)
 
-    # one copy at a time: a second launch brings the first window up, and setup or an
-    # update asks it to quit (see desktop.ask_running_copy_to_quit)
+    # one copy at a time: a second launch brings the first window up (and hands over a
+    # jacesocial:// link it was opened with); setup or an update asks it to quit
+    # (see desktop.ask_running_copy_to_quit)
+    link = next((a for a in argv if a.startswith(f"{URL_SCHEME}://")), None)
     key = desktop.SINGLE_INSTANCE_KEY
     probe = QLocalSocket()
     probe.connectToServer(key)
     if probe.waitForConnected(300):
-        probe.write(b"show")
+        probe.write(f"open {link}".encode() if link else b"show")
         probe.waitForBytesWritten(300)
         return
     QLocalServer.removeServer(key)
@@ -501,14 +533,22 @@ def main():
             return
 
         def got():
-            if bytes(sock.readAll()).startswith(b"quit"):
+            msg = bytes(sock.readAll()).decode(errors="replace")
+            if msg.startswith("quit"):
                 win.quit()
+            elif msg.startswith("open "):
+                win.open_link(msg[5:].strip())
             else:
                 win.bring_up()
         sock.readyRead.connect(got)
         if sock.bytesAvailable():
             got()
     server.newConnection.connect(connected)
+    app.window = win
     if "--hidden" not in argv:
         win.show()
+    if link:
+        win.open_link(link)
+    for pending in app.pending_links:            # macOS can hand links over before the window exists
+        win.open_link(pending)
     sys.exit(app.exec())

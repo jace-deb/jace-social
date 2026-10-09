@@ -13,9 +13,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from jace_social_app import APP_NAME, APP_VERSION, AUTHOR, WEBSITE
+from jace_social_app import APP_NAME, APP_VERSION, AUTHOR, URL_SCHEME, WEBSITE
 
 APP_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\JaceSocial"
+SCHEME_KEY = rf"Software\Classes\{URL_SCHEME}"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 EMBEDDED_DIR = "jace_setup"          # where the onedir launcher sits inside the onefile build
 EXE_NAME = "JaceSocial.exe"
@@ -124,6 +125,25 @@ def _register_app(exe: Path):
             winreg.SetValueEx(k, name, 0, winreg.REG_DWORD, val)
 
 
+def _register_links(exe: Path | None):
+    """jacesocial:// links (from invite pages) open in this app, or stop doing that (exe=None)."""
+    import winreg
+    if exe is None:
+        for sub in (r"\shell\open\command", r"\shell\open", r"\shell", r"\DefaultIcon", ""):
+            try:
+                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, SCHEME_KEY + sub)
+            except OSError:
+                pass
+        return
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, SCHEME_KEY) as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f"URL:{APP_NAME}")
+        winreg.SetValueEx(k, "URL Protocol", 0, winreg.REG_SZ, "")
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, SCHEME_KEY + r"\DefaultIcon") as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f'"{exe}",0')
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, SCHEME_KEY + r"\shell\open\command") as k:
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, f'"{exe}" "%1"')
+
+
 def _set_startup(exe: Path | None):
     """Start with Windows (hidden in the tray), or stop doing that (exe=None)."""
     import winreg
@@ -181,6 +201,7 @@ def install(target_dir: Path, options: dict, status=print) -> tuple[Path, list[s
     _set_startup(exe if options.get("startup") else None)
     if options.get("startup"):
         parts.append("startup")
+    _register_links(exe)
     if options.get("apps"):
         status("Adding to Installed apps")
         _register_app(exe)
@@ -218,6 +239,7 @@ def uninstall(install_dir: Path | None):
     for lnk in shortcut_paths():
         lnk.unlink(missing_ok=True)
     _set_startup(None)
+    _register_links(None)
     try:
         winreg.DeleteKey(winreg.HKEY_CURRENT_USER, APP_KEY)
     except FileNotFoundError:

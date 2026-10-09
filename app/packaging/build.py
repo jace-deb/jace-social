@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent          # app/
 sys.path.insert(0, str(ROOT))
-from jace_social_app import APP_ID, APP_VERSION  # noqa: E402
+from jace_social_app import APP_ID, APP_VERSION, URL_SCHEME  # noqa: E402
 BUILD = ROOT / "build" / sys.platform
 DIST = ROOT / "dist"
 ASSETS = ROOT / "assets"
@@ -128,7 +128,9 @@ def build_macos():
     plist.update({"CFBundleDisplayName": "Jace Social", "CFBundleShortVersionString": APP_VERSION,
                   "CFBundleVersion": APP_VERSION, "LSApplicationCategoryType": "public.app-category.social-networking",
                   "NSHighResolutionCapable": True, "LSMinimumSystemVersion": need,
-                  "NSMicrophoneUsageDescription": "Jace Social uses the microphone for voice calls with your friends."})
+                  "NSMicrophoneUsageDescription": "Jace Social uses the microphone for voice calls with your friends.",
+                  # jacesocial://invite/<code> links from invite pages open in the app
+                  "CFBundleURLTypes": [{"CFBundleURLName": APP_ID, "CFBundleURLSchemes": [URL_SCHEME]}]})
     with open(info, "wb") as f:
         plistlib.dump(plist, f)
     # Info.plist changed, so re-sign (ad hoc: no Apple developer account needed,
