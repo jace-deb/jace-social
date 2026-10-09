@@ -1,5 +1,13 @@
 # Jace Social mod changelog
 
+## 1.4.0
+- **Servers in game:** a new **Servers** button lists your Jace Social servers. Open one to see its channels by category, chat in text channels, and see who's in voice. Join a server by pasting an invite code or link.
+- **Remove friends** from the friends list (click ✕, then **Sure?**).
+- **Permissions without LuckPerms:** LuckPerms' Fabric version only runs on dedicated servers, so in singleplayer and in worlds you host the mod now has its own permission groups. They use the same menu and the same Visitor/Builder/Admin groups. On Fabric 26.1+, other mods like WorldEdit follow them too.
+- Messages show @mentions by name and list attached files.
+- Server channels only pop up a notification when you're @mentioned or replied to.
+- Fixes the version shown in the game log (it always said 1.1.0).
+
 ## 1.3.0
 - **Jace Friends is now the Jace Social mod.** It's part of [Jace Social](https://jace-deb.github.io/jace-social/), which also has a web app and a desktop app with the same friends.
 - **Group chats:** they appear in your friends list. Chat in them, or start a new one with **New group**.

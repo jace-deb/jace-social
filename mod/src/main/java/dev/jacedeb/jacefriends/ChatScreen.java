@@ -14,7 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Chat with one friend, or a group chat (groupId set). */
+/** Chat with one friend, or in a group chat or server channel (groupId set: the channel). */
 public class ChatScreen extends Screen {
 	private final Screen parent;
 	private final JsonObject friend;          // direct message: the friend; group chat: the group
@@ -46,6 +46,29 @@ public class ChatScreen extends Screen {
 
 	public static ChatScreen group(Screen parent, JsonObject group) {
 		return new ChatScreen(parent, group, Social.str(group, "id"));
+	}
+
+	/** A server channel; names = the server's members (for who said what and @mentions). */
+	public static ChatScreen channel(Screen parent, JsonObject channel, Map<String, String> names) {
+		ChatScreen s = new ChatScreen(parent, channel, Social.str(channel, "id"));
+		s.names.putAll(names);
+		return s;
+	}
+
+	/** Message text as shown in game: @names for mentions, and files listed. */
+	private String shown(JsonObject m) {
+		String body = Social.str(m, "body");
+		java.util.regex.Matcher mm = java.util.regex.Pattern.compile("<@([0-9a-f]{32})>").matcher(body);
+		StringBuilder out = new StringBuilder();
+		while (mm.find()) mm.appendReplacement(out, java.util.regex.Matcher.quoteReplacement("@" + names.getOrDefault(mm.group(1), "someone")));
+		mm.appendTail(out);
+		String text = out.toString().replaceAll("<@&[0-9a-f-]{36}>", "@role");
+		if (m.has("attachments") && m.get("attachments").isJsonArray()) {
+			for (JsonElement a : m.getAsJsonArray("attachments")) {
+				text += (text.isEmpty() ? "" : "\n") + "[file: " + Social.str(a.getAsJsonObject(), "name") + "]";
+			}
+		}
+		return text;
 	}
 
 	public boolean isWith(String other) {
@@ -168,7 +191,7 @@ public class ChatScreen extends Screen {
 			String sender = Social.str(m, "sender");
 			boolean system = Social.str(m, "kind").equals("system");
 			boolean mine = sender.equals(Social.myUuid());
-			List<FormattedCharSequence> lines = font.split(Component.literal(Social.str(m, "body")), wrap);
+			List<FormattedCharSequence> lines = font.split(Component.literal(shown(m)), wrap);
 			if (system) {                                     // "Alex joined the group"
 				y -= lines.size() * 10 + 4;
 				if (y < top) break;

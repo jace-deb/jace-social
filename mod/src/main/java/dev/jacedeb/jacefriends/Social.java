@@ -211,7 +211,25 @@ public final class Social {
 		call("POST", "/api/v1/messages/read", b, null, true);
 	}
 
-	// --- group chats (same as the Jace Social app's; server channels aren't shown in game) ---
+	// --- servers (channels use the same message API as group chats) ---
+
+	public static JsonObject servers() throws Exception {
+		return call("GET", "/api/v1/servers", null, null, true).getAsJsonObject();
+	}
+
+	public static JsonObject server(String id) throws Exception {
+		return call("GET", "/api/v1/servers/" + id, null, null, true).getAsJsonObject();
+	}
+
+	/** Join with an invite code, a custom link name, or a whole invite link. */
+	public static JsonObject joinServer(String invite) throws Exception {
+		String code = invite.trim().replaceAll("[?#].*$", "").replaceAll("/+$", "");
+		code = code.substring(code.lastIndexOf('/') + 1);
+		if (!code.matches("[A-Za-z0-9_-]{3,32}")) throw new SocialException("That isn't an invite code");
+		return call("POST", "/api/v1/invites/" + code, new JsonObject(), null, true).getAsJsonObject();
+	}
+
+	// --- group chats (same as the Jace Social app's) ---
 
 	public static JsonObject groups() throws Exception {
 		return call("GET", "/api/v1/groups", null, null, true).getAsJsonObject();

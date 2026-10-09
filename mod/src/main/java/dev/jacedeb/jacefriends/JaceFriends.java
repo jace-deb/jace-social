@@ -170,12 +170,16 @@ public final class JaceFriends {
 			} else {
 				Compat.toast("New message", Social.str(p, "name"));
 			}
-		} else if (event.equals("channel") && Social.str(p, "server_id").isEmpty()) {     // group chat
-			String group = Social.str(p, "channel_id");
-			if (screen instanceof ChatScreen chat && chat.isGroup(group)) chat.reload();
-			else if (!p.has("edited") && !p.has("deleted") && !Social.str(p, "name").isEmpty()) {
-				Compat.toast("Group message", Social.str(p, "name"));
-			}
+		} else if (event.equals("channel")) {                                             // group chat or server channel
+			String channel = Social.str(p, "channel_id");
+			boolean server = !Social.str(p, "server_id").isEmpty();
+			boolean news = !p.has("edited") && !p.has("deleted") && !p.has("reacted") && !Social.str(p, "name").isEmpty();
+			if (screen instanceof ChatScreen chat && chat.isGroup(channel)) chat.reload();
+			// servers can be busy: only pop up when you're @mentioned or replied to
+			else if (news && (!server || p.has("mentioned"))) Compat.toast(server ? "Mentioned you" : "Group message", Social.str(p, "name"));
+			if (screen instanceof ServersScreen s && (s.isServer(Social.str(p, "server_id")) || !server)) s.reload();
+		} else if (event.equals("servers")) {
+			if (screen instanceof ServersScreen s) s.reload();
 		} else if (event.equals("groups")) {
 			if (Social.str(p, "kind").equals("added")) Compat.toast("New group chat", Social.str(p, "name"));
 		} else if (event.equals("friends")) {

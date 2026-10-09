@@ -25,6 +25,7 @@ public class FriendsScreen extends Screen {
 	private EditBox addBox;
 	private String addText = "";
 	private final List<Row> rows = new ArrayList<>();
+	private String confirmRemove = "";        // friend whose "Remove" was clicked once ("Sure?")
 
 	private record Row(String kind, JsonObject f) {}
 
@@ -135,6 +136,8 @@ public class FriendsScreen extends Screen {
 			status = "Loading…";
 			reload();
 		}).bounds(cx + 104, 34, 50, 20).build());
+		addRenderableWidget(Button.builder(Component.literal("Servers"), b -> Compat.setScreen(new ServersScreen(this)))
+				.bounds(cx - 154 - 74, 34, 70, 20).build());
 		if (data != null && !data.getAsJsonArray("friends").isEmpty()) {
 			addRenderableWidget(Button.builder(Component.literal("New group"), b -> Compat.setScreen(new NewGroupScreen(this, data.getAsJsonArray("friends"))))
 					.bounds(cx + 158, 34, 70, 20).build());
@@ -167,7 +170,21 @@ public class FriendsScreen extends Screen {
 						.bounds(x, y, 56, 20).build());
 			} else {
 				int unread = r.f.has("unread") ? r.f.get("unread").getAsInt() : 0;
-				x -= 56;
+				// remove a friend: click once, then "Sure?" to confirm
+				boolean sure = confirmRemove.equals(uuid);
+				x -= sure ? 46 : 22;
+				addRenderableWidget(Button.builder(Component.literal(sure ? "Sure?" : "✕"), b -> {
+					if (confirmRemove.equals(uuid)) {
+						confirmRemove = "";
+						act(() -> Social.removeFriend(uuid));
+						status = "Removed " + Social.str(r.f, "name");
+					} else {
+						confirmRemove = uuid;
+						status = "Click Sure? to remove " + Social.str(r.f, "name") + " from your friends";
+						rebuildWidgets();
+					}
+				}).bounds(x, y, sure ? 44 : 20, 20).build());
+				x -= 58;
 				addRenderableWidget(Button.builder(Component.literal(unread > 0 ? "Chat (" + unread + ")" : "Chat"),
 						b -> Compat.setScreen(new ChatScreen(this, r.f))).bounds(x, y, 56, 20).build());
 				if (r.f.get("online").getAsBoolean() && Calls.state().equals("idle")) {
