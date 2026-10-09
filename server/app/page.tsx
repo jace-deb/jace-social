@@ -125,7 +125,7 @@ export default async function Home() {
                 Notifications even when the window is closed, and invite links open right in the app.</p></div>
               <div className="card"><h3>Jace Launcher</h3><p><a href="https://jace-deb.github.io/jace-launcher/">Jace Launcher</a> has friends and chat built in.
                 Link your Jace account in <b>Settings → Jace Social</b>.</p></div>
-              <div className="card"><h3>In Minecraft</h3><p>Install the <a href="https://jace-store-deb.vercel.app/project/jace-friends">Jace Social mod</a>
+              <div className="card"><h3>In Minecraft</h3><p>Install the <a href="https://jace-store-deb.vercel.app/project/jace-social-minecraft">Jace Social mod</a>
                 (1.20.1 to 26.3, Fabric, NeoForge and Forge) and press <b>J</b>.</p></div>
             </div>
           </div>

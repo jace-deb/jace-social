@@ -8,6 +8,7 @@ Versions already on the store are skipped. Needs Jace Store's dependencies
 migration (008) for --depends.
 """
 import json
+import os
 import re
 import subprocess
 import sys
@@ -16,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "packaging" / "jace-store.mjs"
-SLUG = "jace-social-minecraft"
+SLUG = os.environ.get("JACE_STORE_PROJECT") or "jace-social-minecraft"
 LOADERS = {"fabric": ["fabric", "quilt"], "neoforge": ["neoforge"], "forge": ["forge"]}
 # Jace Store lists these on the project page, and Jace Launcher installs them with the mod.
 # (e4all is left out where stonecutter.properties.toml has a blank deps.e4all: it doesn't work there)
@@ -53,15 +54,21 @@ def main():
     dry = "--dry-run" in sys.argv
     rel = releases()
     have = set() if dry else published()
-    jars = sorted(p for p in folder.glob("jacefriends-*.jar") if not p.name.endswith("-sources.jar"))
+    jars = sorted(p for p in [*folder.glob("jace_social_*.jar"), *folder.glob("jacefriends-*.jar")]
+                  if not p.name.endswith(("-sources.jar", "-dev.jar")))
     if not jars:
         sys.exit("No jars found")
     for jar in jars:
-        m = re.fullmatch(r"jacefriends-(fabric|neoforge|forge)-(.+?)\+(.+)\.jar", jar.name)
-        if not m:
+        # jace_social_1.4.0+26.3-fabric.jar (older builds: jacefriends-fabric-1.3.0+26.3.jar)
+        m = re.fullmatch(r"jace_social_(.+?)\+(.+)-(fabric|neoforge|forge)\.jar", jar.name)
+        old = re.fullmatch(r"jacefriends-(fabric|neoforge|forge)-(.+?)\+(.+)\.jar", jar.name)
+        if m:
+            version, mc, loader = m.groups()
+        elif old:
+            loader, version, mc = old.groups()
+        else:
             print("skipping", jar.name)
             continue
-        loader, version, mc = m.groups()
         number = f"{version}+{mc}-{loader}"
         if number in have:
             print(f"{number}: already on Jace Store")

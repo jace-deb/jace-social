@@ -6,7 +6,7 @@
   "description": "Jace Social in Minecraft: friends, group chats and voice calls, host your world for friends (with e4all) and join theirs in one click.",
   "authors": ["jace.deb"],
   "contact": {
-    "homepage": "https://jace-store-deb.vercel.app/project/jace-friends",
+    "homepage": "https://jace-store-deb.vercel.app/project/jace-social-minecraft",
     "sources": "https://github.com/jace-deb/jace-social/tree/main/mod",
     "issues": "https://github.com/jace-deb/jace-social/issues"
   },

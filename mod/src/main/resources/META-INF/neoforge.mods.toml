@@ -8,7 +8,7 @@ modId = "${id}"
 displayName = "${name}"
 version = "${version}"
 authors = "jace.deb"
-displayURL = "https://jace-store-deb.vercel.app/project/jace-friends"
+displayURL = "https://jace-store-deb.vercel.app/project/jace-social-minecraft"
 logoFile = "assets/jacefriends/icon.png"
 description = "Jace Social in Minecraft: friends, group chats and voice calls, host your world for friends (with e4all) and join theirs in one click."
 

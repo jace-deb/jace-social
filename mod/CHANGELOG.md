@@ -7,6 +7,7 @@
 - Messages show @mentions by name and list attached files.
 - Server channels only pop up a notification when you're @mentioned or replied to.
 - Fixes the version shown in the game log (it always said 1.1.0).
+- The jar files are now named like `jace_social_1.4.0+26.3-fabric.jar`. The mod itself is the same (its id is still `jacefriends`), so updates and your settings carry over.
 
 ## 1.3.0
 - **Jace Friends is now the Jace Social mod.** It's part of [Jace Social](https://jace-deb.github.io/jace-social/), which also has a web app and a desktop app with the same friends.

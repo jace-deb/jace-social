@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "packaging" / "jace-store.mjs"
 REPO = "jace-deb/jace-social"
-SLUG = "jace-social"
+SLUG = "jace-social-desktop"
 FILES = [   # (file ending, label, Jace Store platform); this order is the order on the store
     ("-windows-x64.exe", "Windows", "windows"),
     ("-macos-arm64.app.zip", "macOS (Apple Silicon)", "macos"),

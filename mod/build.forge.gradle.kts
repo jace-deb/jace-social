@@ -102,6 +102,9 @@ tasks {
         val name = project.property("mod.id")
         inputs.property("mod_id", name)
         from("../../LICENSE") { rename { "$it-$name" } }
+        // jace_social_1.4.0+26.3-forge.jar (and ...-sources.jar); the mod id stays jacefriends
+        val fileVersion = project.version.toString()
+        archiveFileName.set(archiveClassifier.map { c -> "jace_social_$fileVersion-forge" + (if (c.isEmpty()) "" else "-$c") + ".jar" })
     }
 
     register<Copy>("buildAndCollect") {
