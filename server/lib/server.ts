@@ -211,3 +211,11 @@ export async function mergeProfiles(src: string, dst: string) {
   const { error } = await db().rpc("merge_profiles", { src, dst });
   if (error) throw error;
 }
+
+/** A bot's API token: a session that doesn't expire until it's regenerated (kind "bot"). */
+export async function createBotToken(uuid: string) {
+  const t = "bot." + token();
+  const { error } = await db().from("sessions").insert({ token_hash: sha256(t), uuid, kind: "bot", expires_at: "2999-01-01T00:00:00Z" });
+  if (error) throw error;
+  return t;
+}

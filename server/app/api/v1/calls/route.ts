@@ -1,4 +1,5 @@
-// POST {to, call_id, kind: offer|answer|hangup, sdp?}: send call setup to a friend
+// POST {to, call_id, kind: offer|answer|hangup|renegotiate|reanswer, sdp?}: send call setup to a friend
+//   (renegotiate/reanswer: a new description mid-call, e.g. when screen sharing starts)
 // GET ?id=<signal id>: read a call signal sent to you (the live event only carries its id)
 import { ApiError, areFriends, body, cleanUuid, db, handler, me, notify } from "@/lib/server";
 
@@ -9,9 +10,10 @@ export const POST = handler(async (req) => {
   const callId = String(b.call_id ?? "");
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(callId)) throw new ApiError(400, "Bad call id");
   const kind = String(b.kind ?? "");
-  if (!["offer", "answer", "hangup"].includes(kind)) throw new ApiError(400, "kind must be offer, answer or hangup");
+  if (!["offer", "answer", "hangup", "renegotiate", "reanswer"].includes(kind))
+    throw new ApiError(400, "kind must be offer, answer, hangup, renegotiate or reanswer");
   const sdp = kind === "hangup" ? null : String(b.sdp ?? "");
-  if (sdp !== null && (!sdp.startsWith("v=0") || sdp.length > 20000)) throw new ApiError(400, "Bad call description");
+  if (sdp !== null && (!sdp.startsWith("v=0") || sdp.length > 30000)) throw new ApiError(400, "Bad call description");
   if (!(await areFriends(p.uuid, to))) throw new ApiError(403, "You can only call friends");
   if (kind === "offer") {
     const minuteAgo = new Date(Date.now() - 60_000).toISOString();

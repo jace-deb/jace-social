@@ -6,6 +6,8 @@ import { has, P } from "@/lib/perms";
 import { reactionsFor, repliedTo } from "@/lib/reactions";
 import { cleanAttachments } from "@/lib/uploads";
 
+export const maxDuration = 30;
+
 export const GET = handler(async (req, ctx) => {
   const p = await me(req);
   const { channel, perms } = await channelFor((await ctx.params).id, p.uuid);
