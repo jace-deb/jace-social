@@ -31,12 +31,24 @@ final class Perms {
 		}
 	}
 
-	/** Do other mods see the built-in permissions? (Fabric's permission API, Fabric 26.1+.) */
+	/** Do other mods see the built-in permissions? (On Fabric, through both permission APIs: see FabricPermissions.) */
 	static boolean builtinReachesMods() {
-		//? if fabric && >=26.1 {
+		//? if fabric {
 		return true;
 		//?} else
 		/*return false;*/
+	}
+
+	/** Permission ideas for the menu, for the permission mods that are installed. */
+	static List<String> suggestions() {
+		List<String> out = new java.util.ArrayList<>();
+		if (Compat.isModLoaded("vanilla-permissions")) {
+			for (String c : new String[]{"gamemode", "tp", "give", "time", "weather", "effect", "kill", "clear", "summon", "fill", "setblock", "difficulty", "gamerule", "*"})
+				out.add("minecraft.command." + c);
+		}
+		if (Compat.isModLoaded("worldedit")) out.add("worldedit.*");
+		if (Compat.isModLoaded("luckperms")) out.add("luckperms.*");
+		return out;
 	}
 
 	static int rank(String g) {

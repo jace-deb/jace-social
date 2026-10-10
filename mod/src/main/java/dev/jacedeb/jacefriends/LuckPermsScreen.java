@@ -46,7 +46,7 @@ public class LuckPermsScreen extends Screen {
 			status = Perms.luckPermsSkipped()
 					? "LuckPerms only runs on dedicated servers on Fabric - using Jace Social's permissions here"
 					: Perms.builtinReachesMods() ? "Jace Social's permissions (no LuckPerms needed)"
-					: "Saved for your roles; other mods only see them with LuckPerms (NeoForge/Forge)";
+					: "Saved for your roles; on NeoForge/Forge other mods only see them with LuckPerms";
 		}
 		run(Perms.ensureRoleGroups(), null);
 		checkLp();
@@ -136,7 +136,8 @@ public class LuckPermsScreen extends Screen {
 			// add a permission
 			if (nodeBox != null) nodeText = nodeBox.getValue();
 			nodeBox = new EditBox(font, left, height - 54, 180, 20, Component.literal("Permission"));
-			nodeBox.setHint(Component.literal("permission, e.g. worldedit.*"));
+			List<String> ideas = Perms.suggestions();
+			nodeBox.setHint(Component.literal("permission, e.g. " + (ideas.isEmpty() ? "worldedit.*" : ideas.get(0))));
 			nodeBox.setMaxLength(200);
 			nodeBox.setValue(nodeText);
 			addRenderableWidget(nodeBox);
@@ -149,6 +150,14 @@ public class LuckPermsScreen extends Screen {
 				nodeBox.setValue("");
 				run(Perms.setGroupPermission(group(), node, newValue), (newValue ? "Allowed " : "Denied ") + node + " for " + group());
 			}).bounds(left + 244, height - 54, 64, 20).build());
+			if (!ideas.isEmpty()) {
+				// fills in the next idea for the installed permission mods (Vanilla Permissions, WorldEdit...)
+				addRenderableWidget(Button.builder(Component.literal("Ideas"), b -> {
+					int i = ideas.indexOf(nodeBox.getValue().trim());
+					nodeText = ideas.get((i + 1) % ideas.size());
+					nodeBox.setValue(nodeText);
+				}).bounds(left + 312, height - 54, 44, 20).build());
+			}
 			pager(perms.size(), per, cx, by);
 		} else {
 			List<WorldPlayers.Player> players = WorldPlayers.list();

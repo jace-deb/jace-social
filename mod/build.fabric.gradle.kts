@@ -52,6 +52,17 @@ dependencies {
     // production names), so those versions get an empty stand-in mod instead.
     if (sc.current.parsed >= "26.1") modLocalRuntime("maven.modrinth:e4all:${sc.properties.get<String>("deps.e4all")}")
     else runtimeOnly(files(rootProject.file("ci/e4all-stub")))   // classpath mods load as-is, no remapping
+    // lucko's fabric-permissions-api in the dev/test client, so the smoke test shows Jace Social
+    // hooking into it (see FabricPermissions); mods like Vanilla Permissions bundle it for real
+    val fabricPermissionsApi = when {
+        sc.current.parsed >= "26.1" -> "0.7.0"
+        sc.current.parsed >= "1.21.11" -> "0.6.1"
+        sc.current.parsed >= "1.21.9" -> "0.5.0"
+        sc.current.parsed >= "1.21.6" -> "0.4.1"
+        sc.current.parsed >= "1.21.2" -> "0.3.3"
+        else -> "0.3.1"
+    }
+    modLocalRuntime("me.lucko:fabric-permissions-api:$fabricPermissionsApi")
 }
 
 loom {

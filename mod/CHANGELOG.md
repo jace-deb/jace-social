@@ -1,5 +1,9 @@
 # Jace Social mod changelog
 
+## 1.5.2
+- **Works with permission addons on every Fabric version:** mods like [Vanilla Permissions](https://modrinth.com/mod/vanilla-permissions), WorldEdit and Essential Commands now follow Jace Social's permission groups in worlds you host, no LuckPerms needed. For example, allow `minecraft.command.gamemode` for the Builder group (Host world → Permissions) and builders can use /gamemode without being an operator.
+- The Permissions menu has an **Ideas** button that fills in common permissions for the addons you have installed.
+
 ## 1.5.1
 - **Normal permissions when you host:** with **Allow Commands** on, Minecraft gives everyone who joins your world commands. Now only you and players on the ops list get them, like on a server. Give a friend commands with **/op name** (or the Admin group in Host world → Permissions), take them away with **/deop name**.
 - **/op** and **/deop** work in worlds you host (Minecraft only has them on servers).
