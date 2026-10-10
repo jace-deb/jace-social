@@ -4,15 +4,18 @@
 // Like the launcher, each side sends its full description once ICE gathering is done
 // (no trickle), and audio goes straight between players or through the TURN relay.
 import { api } from "./client";
+import { getCamera, readStreams, tagStreams, type StreamKinds } from "./media";
 
 export type CallState = "idle" | "calling" | "ringing" | "in-call";
 export type CallInfo = {
   state: CallState; peer: string; peerName: string; muted: boolean; startedAt: number | null; noMic: boolean;
   sharing: boolean; remoteScreen: MediaStream | null;     // screen sharing (renegotiated mid-call)
+  camera: MediaStream | null; remoteCamera: MediaStream | null;   // video: yours (for the preview) and theirs
 };
 type Signal = { id: number; kind: string; call_id: string; from: string; name?: string };
 
-const IDLE: CallInfo = { state: "idle", peer: "", peerName: "", muted: false, startedAt: null, noMic: false, sharing: false, remoteScreen: null };
+const IDLE: CallInfo = { state: "idle", peer: "", peerName: "", muted: false, startedAt: null, noMic: false, sharing: false, remoteScreen: null,
+  camera: null, remoteCamera: null };
 
 function newCallId() {
   const b = new Uint8Array(12);
@@ -28,6 +31,12 @@ export class Calls {
   private mic: MediaStream | null = null;
   private screen: MediaStream | null = null;
   private screenSenders: RTCRtpSender[] = [];
+  private camera: MediaStream | null = null;
+  private cameraSenders: RTCRtpSender[] = [];
+  private remoteKinds: StreamKinds = {};
+  private making = false;          // an offer is being made or waiting for its answer...
+  private pending = false;         // ...so this change goes out after it
+  private callerSide = false;      // we placed the call (we keep our change if both change at once)
   private audio: HTMLAudioElement | null = null;
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private ring: { stop: () => void } | null = null;
@@ -44,6 +53,7 @@ export class Calls {
     if (!Calls.supported()) return this.onEnded("Voice calls don't work in this browser");
     if (this.info.state !== "idle") return this.onEnded("You're already in a call");
     this.callId = newCallId();
+    this.callerSide = true;
     const id = this.callId;
     this.set({ ...IDLE, state: "calling", peer: uuid, peerName: name });
     this.ring = tone("outgoing");
@@ -98,11 +108,40 @@ export class Calls {
       this.screenSenders = this.screen.getTracks().map((t) => pc.addTrack(t, this.screen!));
       this.set({ ...this.info, sharing: true });
     }
+    await this.renegotiate();
+  }
+
+  /** Turn your camera on or off in the call (adds/removes a video track and renegotiates). */
+  async toggleCamera() {
+    const pc = this.pc;
+    if (!pc || this.info.state !== "in-call") return;
+    if (this.camera) {
+      this.camera.getTracks().forEach((t) => t.stop());
+      for (const sender of this.cameraSenders) { try { pc.removeTrack(sender); } catch { /* closed */ } }
+      this.camera = null;
+      this.cameraSenders = [];
+      this.set({ ...this.info, camera: null });
+    } else {
+      try { this.camera = await getCamera(); } catch { this.onEnded("Couldn't turn on your camera - check that it's connected and allowed"); return; }
+      this.cameraSenders = this.camera.getTracks().map((t) => pc.addTrack(t, this.camera!));
+      this.set({ ...this.info, camera: this.camera });
+    }
+    await this.renegotiate();
+  }
+
+  /** A new description mid-call, saying which of our streams is the camera and which the screen. */
+  private async renegotiate() {
+    const pc = this.pc;
+    if (!pc) return;
+    if (this.making || pc.signalingState !== "stable") { this.pending = true; return; }
+    this.making = true;
     try {
-      const sdp = await describe(pc, await pc.createOffer());
+      const sdp = tagStreams(await describe(pc, await pc.createOffer()), { camera: this.camera?.id, screen: this.screen?.id });
       await api("/calls", { body: { to: this.info.peer, call_id: this.callId, kind: "renegotiate", sdp } });
     } catch (e) {
       this.onEnded((e as Error).message);
+    } finally {
+      this.making = false;
     }
   }
 
@@ -142,19 +181,30 @@ export class Calls {
         this.hangUp((err as Error).message);
       }
     } else if (e.kind === "renegotiate" && this.pc) {
-      // the other side started or stopped sharing their screen
+      // the other side turned their camera or screen sharing on or off
       try {
         const { signal } = await api<{ signal: { sdp: string } }>(`/calls?id=${e.id}`);
         const pc = this.pc;
-        if (pc.signalingState !== "stable") await pc.setLocalDescription({ type: "rollback" });
-        await pc.setRemoteDescription({ type: "offer", sdp: signal.sdp });
+        const { sdp: offer, kinds } = readStreams(signal.sdp);
+        this.remoteKinds = kinds;
+        if (pc.signalingState !== "stable" || this.making) {
+          // both changed something at once: the caller keeps its offer, the one who answered gives way
+          if (this.info.state === "in-call" && this.callerSide) return;
+          if (pc.signalingState === "have-local-offer") await pc.setLocalDescription({ type: "rollback" });
+          this.pending = true;
+        }
+        await pc.setRemoteDescription({ type: "offer", sdp: offer });
+        if (!kinds.camera && this.info.remoteCamera) this.set({ ...this.info, remoteCamera: null });
+        if (!kinds.screen && this.info.remoteScreen) this.set({ ...this.info, remoteScreen: null });
         const sdp = await describe(pc, await pc.createAnswer());
         await api("/calls", { body: { to: this.info.peer, call_id: this.callId, kind: "reanswer", sdp } });
+        if (this.pending) { this.pending = false; setTimeout(() => void this.renegotiate(), 300); }
       } catch (err) { console.warn("renegotiate", err); }
     } else if (e.kind === "reanswer" && this.pc?.signalingState === "have-local-offer") {
       try {
         const { signal } = await api<{ signal: { sdp: string } }>(`/calls?id=${e.id}`);
         await this.pc.setRemoteDescription({ type: "answer", sdp: signal.sdp });
+        if (this.pending) { this.pending = false; void this.renegotiate(); }   // a change that waited for this answer
       } catch (err) { console.warn("reanswer", err); }
     } else if (e.kind === "hangup") {
       const n = this.info.peerName;
@@ -180,11 +230,12 @@ export class Calls {
     pc.ontrack = (ev) => {
       if (ev.track.kind === "video") {
         const s = ev.streams[0] ?? new MediaStream([ev.track]);
-        this.set({ ...this.info, remoteScreen: s });
-        const gone = () => { if (this.info.remoteScreen === s) this.set({ ...this.info, remoteScreen: null }); };
+        const key = s.id === this.remoteKinds.camera ? "remoteCamera" : "remoteScreen";
+        this.set({ ...this.info, [key]: s });
+        const gone = () => { if (this.info[key] === s) this.set({ ...this.info, [key]: null }); };
         ev.track.addEventListener("ended", gone);
         ev.track.addEventListener("mute", gone);
-        ev.track.addEventListener("unmute", () => this.set({ ...this.info, remoteScreen: s }));
+        ev.track.addEventListener("unmute", () => this.set({ ...this.info, [key]: s }));
         return;
       }
       if (!this.audio) { this.audio = new Audio(); this.audio.autoplay = true; }
@@ -217,6 +268,11 @@ export class Calls {
     this.screen?.getTracks().forEach((t) => t.stop());
     this.screen = null;
     this.screenSenders = [];
+    this.camera?.getTracks().forEach((t) => t.stop());
+    this.camera = null;
+    this.cameraSenders = [];
+    this.remoteKinds = {};
+    this.making = this.pending = this.callerSide = false;
     if (this.audio) { this.audio.srcObject = null; this.audio = null; }
     this.callId = "";
     this.offerSdp = "";

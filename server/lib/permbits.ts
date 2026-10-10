@@ -40,7 +40,7 @@ export const PERMISSION_INFO: { group: string; items: [number, string, string, b
   { group: "Voice", items: [
     [P.CONNECT, "Connect", "Join voice channels", true],
     [P.SPEAK, "Speak", "", true],
-    [P.STREAM, "Share screen", "", true],
+    [P.STREAM, "Video", "Turn on their camera and share their screen", true],
   ] },
   { group: "Advanced", items: [
     [P.ADMIN, "Administrator", "Every permission, everywhere. Give this carefully.", false],

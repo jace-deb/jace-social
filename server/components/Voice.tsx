@@ -3,6 +3,7 @@
 // screen shares, and the list of who's in a voice channel.
 import { useEffect, useRef, useState } from "react";
 import type { Person } from "@/lib/client";
+import { canUseCamera } from "@/lib/media";
 import type { RoomState, Voice } from "@/lib/voice";
 import { Avatar } from "./ui";
 
@@ -12,10 +13,10 @@ export function useVoice(voice: Voice): RoomState {
   return s;
 }
 
-function Video({ stream, muted }: { stream: MediaStream; muted?: boolean }) {
+function Video({ stream, muted, mirror }: { stream: MediaStream; muted?: boolean; mirror?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => { if (ref.current) ref.current.srcObject = stream; }, [stream]);
-  return <video ref={ref} autoPlay playsInline muted={muted} />;
+  return <video ref={ref} autoPlay playsInline muted={muted} style={mirror ? { transform: "scaleX(-1)" } : undefined} />;
 }
 
 /** "Voice connected" bar above your name, with mute / deafen / screen / leave. */
@@ -35,7 +36,10 @@ export function VoiceBar({ voice, state, onOpen }: { voice: Voice; state: RoomSt
           title={state.noMic ? "No microphone" : state.muted ? "Unmute" : "Mute"}>{state.muted || state.noMic ? "🎙️✕" : "🎙️"}</button>
         <button className={`btn small${state.deafened ? " danger" : ""}`} onClick={() => void voice.toggleDeafen()} title={state.deafened ? "Undeafen" : "Deafen"}>
           {state.deafened ? "🎧✕" : "🎧"}</button>
-        {"getDisplayMedia" in (navigator.mediaDevices ?? {}) && (
+        {canUseCamera() && state.canVideo && (
+          <button className={`btn small${state.camera ? " primary" : ""}`} onClick={() => void voice.toggleCamera()} title={state.camera ? "Turn off camera" : "Turn on camera"}>📷</button>
+        )}
+        {"getDisplayMedia" in (navigator.mediaDevices ?? {}) && state.canVideo && (
           <button className={`btn small${state.sharing ? " primary" : ""}`} onClick={() => void voice.toggleScreen()} title={state.sharing ? "Stop sharing" : "Share your screen"}>
             🖥️</button>
         )}
@@ -98,9 +102,11 @@ export function VoiceRoom({ voice, state, channelId, channelName, people, me, ca
         {state.participants.map((pt) => {
           const p = pt.uuid === me.uuid ? me : people[pt.uuid];
           return (
-            <div key={pt.uuid} className={`voice-tile${state.speaking[pt.uuid] ? " speaking" : ""}${state.screens[pt.uuid] ? " has-screen" : ""}`}
+            <div key={pt.uuid} className={`voice-tile${state.speaking[pt.uuid] ? " speaking" : ""}${state.screens[pt.uuid] ? " has-screen" : ""}${state.cameras[pt.uuid] ? " has-camera" : ""}`}
               onClick={() => state.screens[pt.uuid] && setFocus(pt.uuid)}>
-              <Avatar p={p ?? { name: "?" }} size={72} />
+              {state.cameras[pt.uuid]
+                ? <div className="tile-video"><Video stream={state.cameras[pt.uuid]} muted={pt.uuid === me.uuid} mirror={pt.uuid === me.uuid} /></div>
+                : <Avatar p={p ?? { name: "?" }} size={72} />}
               <b>{p?.nickname || p?.name || "Someone"}</b>
               <span className="tile-icons">{pt.muted && "🎙️✕"} {pt.deafened && "🎧✕"} {state.screens[pt.uuid] && <span className="live">LIVE</span>}</span>
             </div>
@@ -110,7 +116,9 @@ export function VoiceRoom({ voice, state, channelId, channelName, people, me, ca
       <div className="voice-controls">
         <button className={`btn${state.muted ? " danger" : ""}`} onClick={() => void voice.toggleMute()} disabled={state.noMic}>{state.muted || state.noMic ? "Unmute" : "Mute"}</button>
         <button className={`btn${state.deafened ? " danger" : ""}`} onClick={() => void voice.toggleDeafen()}>{state.deafened ? "Undeafen" : "Deafen"}</button>
-        {"getDisplayMedia" in (navigator.mediaDevices ?? {}) && <button className={`btn${state.sharing ? " primary" : ""}`} onClick={() => void voice.toggleScreen()}>
+        {canUseCamera() && state.canVideo && <button className={`btn${state.camera ? " primary" : ""}`} onClick={() => void voice.toggleCamera()}>
+          {state.camera ? "Turn off camera" : "Turn on camera"}</button>}
+        {"getDisplayMedia" in (navigator.mediaDevices ?? {}) && state.canVideo && <button className={`btn${state.sharing ? " primary" : ""}`} onClick={() => void voice.toggleScreen()}>
           {state.sharing ? "Stop sharing" : "Share screen"}</button>}
         <button className="btn danger" onClick={() => void voice.leave()}>Leave</button>
       </div>

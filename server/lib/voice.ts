@@ -5,18 +5,25 @@
 // two people renegotiate at once, the one with the smaller id gives way ("polite peer").
 // Like direct calls, each description is sent once ICE gathering is done (no trickle).
 import { api } from "./client";
+import { getCamera, readStreams, tagStreams, type StreamKinds } from "./media";
 
 export type Participant = { uuid: string; muted: boolean; deafened: boolean; streaming: boolean; person?: { name: string; avatar_url: string | null } };
 export type RoomState = {
   channelId: string | null; serverId: string | null; channelName: string;
   participants: Participant[]; muted: boolean; deafened: boolean; sharing: boolean; noMic: boolean;
   speaking: Record<string, boolean>; screens: Record<string, MediaStream>; connecting: boolean;
+  camera: boolean; cameras: Record<string, MediaStream>;      // who has their camera on (you included)
+  canVideo: boolean;                                         // the "Video" permission: camera and screen sharing
 };
 
-type Peer = { pc: RTCPeerConnection; audio: HTMLAudioElement; screen: MediaStream | null; screenSenders: RTCRtpSender[] };
+type Peer = {
+  pc: RTCPeerConnection; audio: HTMLAudioElement; screen: MediaStream | null; screenSenders: RTCRtpSender[];
+  cameraSenders: RTCRtpSender[]; kinds: StreamKinds;       // which of their streams is the camera / screen
+  making: boolean; pending: boolean;                        // one change at a time; pending = send another after the answer
+};
 
 const EMPTY: RoomState = { channelId: null, serverId: null, channelName: "", participants: [], muted: false, deafened: false,
-  sharing: false, noMic: false, speaking: {}, screens: {}, connecting: false };
+  sharing: false, noMic: false, speaking: {}, screens: {}, connecting: false, camera: false, cameras: {}, canVideo: true };
 
 async function described(pc: RTCPeerConnection, desc: RTCSessionDescriptionInit) {
   await pc.setLocalDescription(desc);
@@ -35,6 +42,7 @@ export class Voice {
   private peers = new Map<string, Peer>();
   private mic: MediaStream | null = null;
   private screen: MediaStream | null = null;
+  private cam: MediaStream | null = null;
   private ice: RTCIceServer[] = [];
   private beat: ReturnType<typeof setInterval> | null = null;
   private meter: ReturnType<typeof setInterval> | null = null;
@@ -55,7 +63,7 @@ export class Voice {
     try {
       const [{ ice_servers }, room] = await Promise.all([
         api<{ ice_servers: RTCIceServer[] }>("/calls/ice"),
-        api<{ participants: Participant[]; can_speak: boolean }>(`/channels/${channelId}/voice`, { body: { action: "join" } }),
+        api<{ participants: Participant[]; can_speak: boolean; can_stream?: boolean }>(`/channels/${channelId}/voice`, { body: { action: "join" } }),
       ]);
       this.ice = ice_servers;
       try {
@@ -65,7 +73,7 @@ export class Voice {
       } catch {
         this.set({ noMic: true });
       }
-      this.set({ participants: room.participants, muted: !room.can_speak, connecting: false });
+      this.set({ participants: room.participants, muted: !room.can_speak, connecting: false, canVideo: room.can_stream !== false });
       // the one who joins connects to everyone already here
       for (const p of room.participants) if (p.uuid !== me) await this.call(p.uuid);
       this.beat = setInterval(() => void this.sendState({}), 20_000);
@@ -84,7 +92,8 @@ export class Voice {
     for (const uuid of [...this.peers.keys()]) this.dropPeer(uuid);
     this.mic?.getTracks().forEach((t) => t.stop());
     this.screen?.getTracks().forEach((t) => t.stop());
-    this.mic = this.screen = null;
+    this.cam?.getTracks().forEach((t) => t.stop());
+    this.mic = this.screen = this.cam = null;
     void this.audioCtx?.close().catch(() => {});
     this.audioCtx = null;
     this.analysers.clear();
@@ -123,6 +132,30 @@ export class Voice {
     await this.sendState({ streaming: true });
   }
 
+  /** Turn your camera on or off for everyone in the room. */
+  async toggleCamera() {
+    if (!this.state.channelId) return;
+    if (this.cam) {
+      this.cam.getTracks().forEach((t) => t.stop());
+      this.cam = null;
+      const cameras = { ...this.state.cameras };
+      delete cameras[this.me];
+      this.set({ camera: false, cameras });
+      for (const [uuid, peer] of this.peers) {
+        for (const s of peer.cameraSenders) { try { peer.pc.removeTrack(s); } catch { /* closed */ } }
+        peer.cameraSenders = [];
+        await this.renegotiate(uuid);
+      }
+      return;
+    }
+    try { this.cam = await getCamera(); } catch { this.onError("Couldn't turn on your camera - check that it's connected and allowed"); return; }
+    this.set({ camera: true, cameras: { ...this.state.cameras, [this.me]: this.cam } });
+    for (const [uuid, peer] of this.peers) {
+      peer.cameraSenders = this.cam.getTracks().map((t) => peer.pc.addTrack(t, this.cam!));
+      await this.renegotiate(uuid);
+    }
+  }
+
   async stopScreen() {
     if (!this.screen) return;
     this.screen.getTracks().forEach((t) => t.stop());
@@ -155,20 +188,37 @@ export class Voice {
     try {
       const { signal } = await api<{ signal: { sdp: string; kind: string } }>(`/voice/signal?id=${e.id}`);
       if (signal.kind === "offer") {
-        let peer = this.peers.get(e.from);
-        if (!peer) peer = this.newPeer(e.from);
+        const isNew = !this.peers.has(e.from);
+        const peer = this.peers.get(e.from) ?? this.newPeer(e.from);
         const pc = peer.pc;
-        if (pc.signalingState !== "stable") {
-          // both sides offered at once: the smaller id gives way
+        if (pc.signalingState !== "stable" || peer.making) {
+          // both sides changed something at once: the bigger id keeps its offer (the other side
+          // answers it), the smaller id gives way and sends its own change again afterwards
           if (this.me > e.from) return;
-          await pc.setLocalDescription({ type: "rollback" });
+          if (pc.signalingState === "have-local-offer") await pc.setLocalDescription({ type: "rollback" });
+          peer.pending = true;
         }
-        await pc.setRemoteDescription({ type: "offer", sdp: signal.sdp });
-        const sdp = await described(pc, await pc.createAnswer());
+        const { sdp: offer, kinds } = readStreams(signal.sdp);
+        peer.kinds = kinds;
+        await pc.setRemoteDescription({ type: "offer", sdp: offer });
+        if (!kinds.camera) this.clearVideo("cameras", e.from);
+        if (!kinds.screen) this.clearVideo("screens", e.from);
+        const sdp = tagStreams(await described(pc, await pc.createAnswer()), { camera: this.cam?.id, screen: this.screen?.id });
         await api("/voice/signal", { body: { channel_id: this.state.channelId, to: e.from, kind: "answer", sdp } });
+        // they joined while our camera or screen was on (their offer had no room for our video),
+        // or our own change gave way to theirs: offer ours now
+        if ((isNew && (this.cam || this.screen)) || peer.pending) {
+          peer.pending = false;
+          setTimeout(() => void this.renegotiate(e.from), 300);
+        }
       } else {
         const peer = this.peers.get(e.from);
-        if (peer && peer.pc.signalingState === "have-local-offer") await peer.pc.setRemoteDescription({ type: "answer", sdp: signal.sdp });
+        if (peer && peer.pc.signalingState === "have-local-offer") {
+          const { sdp: answer, kinds } = readStreams(signal.sdp);
+          peer.kinds = { ...peer.kinds, ...kinds };
+          await peer.pc.setRemoteDescription({ type: "answer", sdp: answer });
+          if (peer.pending) { peer.pending = false; void this.renegotiate(e.from); }   // a change that waited for this answer
+        }
       }
     } catch (err) {
       console.warn("voice signal", err);
@@ -181,10 +231,11 @@ export class Voice {
     const audio = new Audio();
     audio.autoplay = true;
     audio.muted = this.state.deafened;
-    const peer: Peer = { pc, audio, screen: null, screenSenders: [] };
+    const peer: Peer = { pc, audio, screen: null, screenSenders: [], cameraSenders: [], kinds: {}, making: false, pending: false };
     if (this.mic) this.mic.getAudioTracks().forEach((t) => pc.addTrack(t, this.mic!));
     else pc.addTransceiver("audio", { direction: "recvonly" });
     if (this.screen) peer.screenSenders = this.screen.getTracks().map((t) => pc.addTrack(t, this.screen!));
+    if (this.cam) peer.cameraSenders = this.cam.getTracks().map((t) => pc.addTrack(t, this.cam!));
     pc.ontrack = (ev) => {
       if (ev.track.kind === "audio" && !peer.audio.srcObject) {
         const s = ev.streams[0] ?? new MediaStream([ev.track]);
@@ -193,10 +244,11 @@ export class Voice {
         this.watchLevel(uuid, s);
       } else if (ev.track.kind === "video") {
         const s = ev.streams[0] ?? new MediaStream([ev.track]);
-        peer.screen = s;
-        this.set({ screens: { ...this.state.screens, [uuid]: s } });
-        ev.track.addEventListener("ended", () => this.clearScreen(uuid));
-        s.addEventListener("removetrack", () => { if (!s.getVideoTracks().length) this.clearScreen(uuid); });
+        const which = s.id === peer.kinds.camera ? "cameras" : "screens";
+        if (which === "screens") peer.screen = s;
+        this.set({ [which]: { ...this.state[which], [uuid]: s } });
+        ev.track.addEventListener("ended", () => this.clearVideo(which, uuid));
+        s.addEventListener("removetrack", () => { if (!s.getVideoTracks().length) this.clearVideo(which, uuid); });
       }
     };
     pc.onconnectionstatechange = () => {
@@ -206,10 +258,15 @@ export class Voice {
     return peer;
   }
 
+  private clearVideo(which: "screens" | "cameras", uuid: string) {
+    if (!this.state[which][uuid]) return;
+    const next = { ...this.state[which] };
+    delete next[uuid];
+    this.set({ [which]: next });
+  }
+
   private clearScreen(uuid: string) {
-    const screens = { ...this.state.screens };
-    delete screens[uuid];
-    this.set({ screens });
+    this.clearVideo("screens", uuid);
   }
 
   private async call(uuid: string) {
@@ -218,13 +275,19 @@ export class Voice {
     await this.renegotiate(uuid, peer);
   }
 
+  /** Send our current camera/screen/mic setup to one person. One change at a time: while an
+   *  offer is out (or being made), another change just marks it as pending. */
   private async renegotiate(uuid: string, peer = this.peers.get(uuid)) {
     if (!peer || !this.state.channelId) return;
+    if (peer.making || peer.pc.signalingState !== "stable") { peer.pending = true; return; }
+    peer.making = true;
     try {
-      const sdp = await described(peer.pc, await peer.pc.createOffer());
+      const sdp = tagStreams(await described(peer.pc, await peer.pc.createOffer()), { camera: this.cam?.id, screen: this.screen?.id });
       await api("/voice/signal", { body: { channel_id: this.state.channelId, to: uuid, kind: "offer", sdp } });
     } catch (e) {
       console.warn("voice offer", e);
+    } finally {
+      peer.making = false;
     }
   }
 
@@ -236,6 +299,7 @@ export class Voice {
     this.peers.delete(uuid);
     this.analysers.delete(uuid);
     this.clearScreen(uuid);
+    this.clearVideo("cameras", uuid);
   }
 
   private async sendState(patch: { muted?: boolean; deafened?: boolean; streaming?: boolean }) {

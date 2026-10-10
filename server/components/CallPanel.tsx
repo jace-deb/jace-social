@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Person } from "@/lib/client";
 import type { CallInfo, Calls } from "@/lib/calls";
+import { canUseCamera } from "@/lib/media";
 import { Avatar } from "./ui";
 
 export function useCall(calls: Calls): CallInfo {
@@ -28,6 +29,12 @@ export function CallPanel({ calls, info, people }: { calls: Calls; info: CallInf
 
   return (
     <div className="call-panel" role="dialog" aria-label="Voice call">
+      {(info.remoteCamera || info.camera) && (
+        <div className="call-cams">
+          {info.remoteCamera && <Video stream={info.remoteCamera} className="call-cam" label={p.name} />}
+          {info.camera && <Video stream={info.camera} className={`call-cam self${info.remoteCamera ? " pip" : ""}`} label="You" muted mirror />}
+        </div>
+      )}
       {info.remoteScreen && <RemoteScreen stream={info.remoteScreen} name={p.name} />}
       <Avatar p={p} size={44} />
       <div className="call-who"><b>{p.name}</b><span>{line}{info.sharing ? " · sharing your screen" : ""}</span></div>
@@ -37,6 +44,8 @@ export function CallPanel({ calls, info, people }: { calls: Calls; info: CallInf
       </> : <>
         {info.state === "in-call" && !info.noMic &&
           <button className="btn small" onClick={() => calls.toggleMute()} aria-pressed={info.muted}>{info.muted ? "Unmute" : "Mute"}</button>}
+        {info.state === "in-call" && canUseCamera() &&
+          <button className={`btn small${info.camera ? " primary" : ""}`} onClick={() => void calls.toggleCamera()} title={info.camera ? "Turn off camera" : "Turn on camera"}>📷</button>}
         {info.state === "in-call" && typeof navigator !== "undefined" && "getDisplayMedia" in (navigator.mediaDevices ?? {}) &&
           <button className={`btn small${info.sharing ? " primary" : ""}`} onClick={() => void calls.toggleScreen()} title="Share your screen">🖥️</button>}
         <button className="btn danger small" onClick={() => calls.hangUp()}>{info.state === "calling" ? "Cancel" : "Hang up"}</button>
@@ -52,6 +61,18 @@ function RemoteScreen({ stream, name }: { stream: MediaStream; name: string }) {
     <div className="call-screen">
       <video ref={ref} autoPlay playsInline className="call-video" onDoubleClick={(e) => void e.currentTarget.requestFullscreen?.().catch(() => {})} />
       <span className="muted small">🖥️ {name}'s screen · double-click for full screen</span>
+    </div>
+  );
+}
+
+function Video({ stream, className, label, muted, mirror }: { stream: MediaStream; className: string; label: string; muted?: boolean; mirror?: boolean }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => { if (ref.current) ref.current.srcObject = stream; }, [stream]);
+  return (
+    <div className={className}>
+      <video ref={ref} autoPlay playsInline muted={muted} style={mirror ? { transform: "scaleX(-1)" } : undefined}
+        onDoubleClick={(e) => void e.currentTarget.requestFullscreen?.().catch(() => {})} />
+      <span className="cam-label">{label}</span>
     </div>
   );
 }
