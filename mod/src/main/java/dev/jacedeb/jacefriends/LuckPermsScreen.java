@@ -45,8 +45,7 @@ public class LuckPermsScreen extends Screen {
 		if (!Perms.luckPerms()) {
 			status = Perms.luckPermsSkipped()
 					? "LuckPerms only runs on dedicated servers on Fabric - using Jace Social's permissions here"
-					: Perms.builtinReachesMods() ? "Jace Social's permissions (no LuckPerms needed)"
-					: "Saved for your roles; on NeoForge/Forge other mods only see them with LuckPerms";
+					: "Jace Social's permissions (no LuckPerms needed)";
 		}
 		run(Perms.ensureRoleGroups(), null);
 		checkLp();

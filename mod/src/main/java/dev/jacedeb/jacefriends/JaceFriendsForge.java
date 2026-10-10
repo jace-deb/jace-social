@@ -27,6 +27,9 @@ public class JaceFriendsForge {
 		MinecraftForge.EVENT_BUS.addListener((ScreenEvent.Init.Post e) -> {
 			for (Button b : JaceFriends.screenButtons(e.getScreen(), e.getScreen().width, e.getScreen().height)) e.addListener(b);
 		});
+		ForgePermissions.selfCheck("net.minecraftforge.server.permission.PermissionAPI");
+		MinecraftForge.EVENT_BUS.addListener((net.minecraftforge.event.server.ServerStartingEvent e) ->
+				ForgePermissions.wrap("net.minecraftforge.server.permission.PermissionAPI"));
 		MinecraftForge.EVENT_BUS.addListener((net.minecraftforge.event.RegisterCommandsEvent e) ->
 				JaceFriends.registerHostCommands(e.getDispatcher(), e.getCommandSelection()));
 		MinecraftForge.EVENT_BUS.addListener((net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent e) -> {

@@ -31,6 +31,9 @@ public class JaceFriendsNeoForge {
 		NeoForge.EVENT_BUS.addListener((ScreenEvent.Init.Post e) -> {
 			for (Button b : JaceFriends.screenButtons(e.getScreen(), e.getScreen().width, e.getScreen().height)) e.addListener(b);
 		});
+		ForgePermissions.selfCheck("net.neoforged.neoforge.server.permission.PermissionAPI");
+		NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStartingEvent e) ->
+				ForgePermissions.wrap("net.neoforged.neoforge.server.permission.PermissionAPI"));
 		NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.RegisterCommandsEvent e) ->
 				JaceFriends.registerHostCommands(e.getDispatcher(), e.getCommandSelection()));
 		NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent e) -> {

@@ -82,7 +82,9 @@ final class FabricPermissions {
 			}
 			return answer.answer(args[0], (String) args[1]);
 		});
-		event.getClass().getMethod("register", Object.class).invoke(event, callback);
+		@SuppressWarnings("unchecked")
+		net.fabricmc.fabric.api.event.Event<Object> e = (net.fabricmc.fabric.api.event.Event<Object>) event;
+		e.register(callback);                       // through the public Event type (the class behind it isn't public)
 	}
 
 	private static net.fabricmc.fabric.api.util.TriState triState(Boolean v) {

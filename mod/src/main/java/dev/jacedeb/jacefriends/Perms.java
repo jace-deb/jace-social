@@ -31,12 +31,9 @@ final class Perms {
 		}
 	}
 
-	/** Do other mods see the built-in permissions? (On Fabric, through both permission APIs: see FabricPermissions.) */
+	/** Other mods see the built-in permissions: FabricPermissions on Fabric, ForgePermissions on NeoForge / Forge. */
 	static boolean builtinReachesMods() {
-		//? if fabric {
 		return true;
-		//?} else
-		/*return false;*/
 	}
 
 	/** Permission ideas for the menu, for the permission mods that are installed. */

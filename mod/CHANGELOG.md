@@ -1,7 +1,8 @@
 # Jace Social mod changelog
 
 ## 1.5.2
-- **Works with permission addons on every Fabric version:** mods like [Vanilla Permissions](https://modrinth.com/mod/vanilla-permissions), WorldEdit and Essential Commands now follow Jace Social's permission groups in worlds you host, no LuckPerms needed. For example, allow `minecraft.command.gamemode` for the Builder group (Host world → Permissions) and builders can use /gamemode without being an operator.
+- **Works with permission addons:** mods like [Vanilla Permissions](https://modrinth.com/mod/vanilla-permissions), WorldEdit and Essential Commands now follow Jace Social's permission groups in worlds you host, no LuckPerms needed. For example, allow `minecraft.command.gamemode` for the Builder group (Host world → Permissions) and builders can use /gamemode without being an operator.
+- **NeoForge and Forge too:** mods that ask NeoForge's / Forge's permission API follow Jace Social's groups in worlds you host. Anything the groups don't mention works as before.
 - The Permissions menu has an **Ideas** button that fills in common permissions for the addons you have installed.
 
 ## 1.5.1

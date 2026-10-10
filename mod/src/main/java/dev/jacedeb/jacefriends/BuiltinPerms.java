@@ -17,8 +17,8 @@ import java.util.concurrent.CompletableFuture;
  * Jace Social's own permission groups, for when LuckPerms can't run. LuckPerms' Fabric
  * build only runs on dedicated servers, so in singleplayer and in worlds you host it is
  * skipped even when it's in the mods folder. Same groups and menu as with LuckPerms;
- * on Fabric other mods (Vanilla Permissions, WorldEdit...) see these through the permission
- * APIs (see FabricPermissions).
+ * other mods (Vanilla Permissions, WorldEdit...) see these through the loaders' permission
+ * APIs (see FabricPermissions, ForgePermissions).
  *
  * Saved in config/jacefriends-permissions.json:
  *   {"groups": {"default": {"some.node": true}}, "users": {"<uuid>": {"group": "jace_builder", "nodes": {...}}}}
