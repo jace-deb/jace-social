@@ -129,6 +129,7 @@ def build_macos():
                   "CFBundleVersion": APP_VERSION, "LSApplicationCategoryType": "public.app-category.social-networking",
                   "NSHighResolutionCapable": True, "LSMinimumSystemVersion": need,
                   "NSMicrophoneUsageDescription": "Jace Social uses the microphone for voice calls with your friends.",
+                  "NSCameraUsageDescription": "Jace Social uses the camera when you turn it on in a call.",
                   # jacesocial://invite/<code> links from invite pages open in the app
                   "CFBundleURLTypes": [{"CFBundleURLName": APP_ID, "CFBundleURLSchemes": [URL_SCHEME]}]})
     with open(info, "wb") as f:

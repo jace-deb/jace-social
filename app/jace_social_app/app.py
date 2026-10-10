@@ -12,7 +12,7 @@ from PySide6.QtCore import QObject, Property, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEnginePermission, QWebEngineProfile, QWebEngineScript,
+from PySide6.QtWebEngineCore import (QWebEngineDesktopMediaRequest, QWebEnginePage, QWebEnginePermission, QWebEngineProfile, QWebEngineScript,
                                       QWebEngineSettings)
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QDialog, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout
@@ -168,19 +168,82 @@ class Bridge(QObject):
         QTimer.singleShot(0, self.window.delete_app)
 
 
+class ScreenPicker(QDialog):
+    """Which screen or window to share (the page asked for getDisplayMedia)."""
+
+    def __init__(self, request, parent=None):
+        from PySide6.QtCore import Qt as _Qt
+        from PySide6.QtWidgets import QDialogButtonBox, QLabel, QListWidget, QListWidgetItem
+        super().__init__(parent)
+        self.request = QWebEngineDesktopMediaRequest(request)  # the signal's copy dies (and cancels) when the slot returns
+        self.done_ = False
+        self.setWindowTitle("Share your screen")
+        self.resize(420, 420)
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel("Choose what your friends will see:"))
+        self.list = QListWidget()
+        for kind, model, label in (("screen", request.screensModel(), "🖥️"), ("window", request.windowsModel(), "🪟")):
+            for row in range(model.rowCount()):
+                name = model.data(model.index(row, 0), _Qt.ItemDataRole.DisplayRole) or f"{kind.title()} {row + 1}"
+                item = QListWidgetItem(f"{label}  {name}")
+                item.setData(_Qt.ItemDataRole.UserRole, (kind, row))
+                self.list.addItem(item)
+        if self.list.count():
+            self.list.setCurrentRow(0)
+        self.list.itemDoubleClicked.connect(lambda _: self.accept())
+        lay.addWidget(self.list, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        share = buttons.addButton("Share", QDialogButtonBox.ButtonRole.AcceptRole)
+        share.setDefault(True)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        lay.addWidget(buttons)
+        self.finished.connect(self._finish)
+
+    def _finish(self, result: int):
+        from PySide6.QtCore import Qt as _Qt
+        if self.done_:
+            return
+        self.done_ = True
+        item = self.list.currentItem()
+        if result == QDialog.DialogCode.Accepted.value and item:
+            kind, row = item.data(_Qt.ItemDataRole.UserRole)
+            model = self.request.screensModel() if kind == "screen" else self.request.windowsModel()
+            (self.request.selectScreen if kind == "screen" else self.request.selectWindow)(model.index(row, 0))
+        else:
+            self.request.cancel()
+        self.deleteLater()
+
+
 class Page(QWebEnginePage):
     """Keeps Jace Social (and Jace sign-in) in the app; other links open in the browser."""
+
+    # microphone, camera and screen sharing for calls - only for Jace Social itself
+    CALL_PERMISSIONS = {
+        QWebEnginePermission.PermissionType.MediaAudioCapture, QWebEnginePermission.PermissionType.MediaVideoCapture,
+        QWebEnginePermission.PermissionType.MediaAudioVideoCapture, QWebEnginePermission.PermissionType.DesktopVideoCapture,
+        QWebEnginePermission.PermissionType.DesktopAudioVideoCapture,
+    }
 
     def __init__(self, profile, parent=None):
         super().__init__(profile, parent)
         self.permissionRequested.connect(self._permission)
+        self.desktopMediaRequested.connect(self._pick_screen)
+        self._picker = None
 
     def _permission(self, p: QWebEnginePermission):
-        # the microphone, for voice calls - only for Jace Social itself
-        if p.permissionType() == QWebEnginePermission.PermissionType.MediaAudioCapture and p.origin().host() == QUrl(BASE).host():
+        if p.permissionType() in self.CALL_PERMISSIONS and p.origin().host() == QUrl(BASE).host():
             p.grant()
         else:
             p.deny()
+
+    def _pick_screen(self, request):
+        """Screen sharing: let the person pick a screen or a window (like a browser does)."""
+        if self.url().host() != QUrl(BASE).host():
+            request.cancel()
+            return
+        self._picker = ScreenPicker(request, self.parent())
+        self._picker.open()                     # not exec(): this runs inside a WebEngine callback
 
     def acceptNavigationRequest(self, url: QUrl, nav_type, is_main_frame: bool) -> bool:
         if is_main_frame and url.scheme() in ("http", "https") and url.host() not in IN_APP_HOSTS:
@@ -216,6 +279,8 @@ class Window(QMainWindow):
         self.page.settings().setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, True)
         # so an incoming call can ring before you've clicked anything
         self.page.settings().setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False)
+        # screen sharing in calls (off by default; the page's getDisplayMedia fails without it)
+        self.page.settings().setAttribute(QWebEngineSettings.WebAttribute.ScreenCaptureEnabled, True)
 
         self.channel = QWebChannel(self.page)
         self.bridge = Bridge(self)

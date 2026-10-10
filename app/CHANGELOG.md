@@ -1,5 +1,10 @@
 # Jace Social desktop app changelog
 
+## 1.0.3
+- Fixes "no permission" when turning on your camera in a call or voice channel.
+- Screen sharing works in the app: pick your whole screen or one window to share.
+- macOS asks for camera access the first time you turn your camera on.
+
 ## 1.0.2
 - Fixes Sign in with Minecraft showing a blank white window.
 - Invite links open in the app: on an invite page, click **Open in the desktop app**.
