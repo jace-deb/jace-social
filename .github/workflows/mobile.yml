@@ -1,6 +1,6 @@
 # Builds the Jace Social phone apps (mobile/: the live web app in a Capacitor shell).
 # Every push uploads them as workflow artifacts; a tag like mobile-v1.0.0 also makes a
-# GitHub Release (notes from mobile/CHANGELOG.md) with:
+# GitHub Release (notes from mobile/CHANGELOG.md), listed on Jace Store, with:
 #   jace_social_mobile-<version>-android.apk       signed with the release key (secrets, see
 #                                                  packaging/make_android_key.sh) so updates install
 #   jace_social_mobile-<version>-ios-unsigned.ipa  for sideloading (AltStore / Sideloadly), since
@@ -158,3 +158,16 @@ jobs:
           V="${GITHUB_REF_NAME#mobile-v}"
           awk -v v="$V" '$0 ~ "^## "v"$" {f=1; next} /^## / {f=0} f' mobile/CHANGELOG.md > notes.md
           gh release create "$GITHUB_REF_NAME" files/* --title "Jace Social for phones $V" --notes-file notes.md
+
+  store:
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      JACE_STORE_TOKEN: ${{ secrets.JACE_STORE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish to Jace Store
+        run: |
+          if [ -z "$JACE_STORE_TOKEN" ]; then echo "::warning::JACE_STORE_TOKEN not set"; exit 0; fi
+          python3 packaging/publish_app.py "$GITHUB_REF_NAME"

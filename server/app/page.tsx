@@ -128,7 +128,7 @@ export default async function Home() {
               <div className="card"><h3>Web</h3><p><a href="/app">Open the app</a> and sign in with Jace or Minecraft.</p></div>
               <div className="card"><h3>Desktop app</h3><p>Windows, macOS and Linux <a href="#download">above</a> or from the <a href={`https://github.com/${REPO}/releases`}>releases page</a>.
                 Notifications even when the window is closed, and invite links open right in the app.</p></div>
-              <div className="card"><h3>Phone</h3><p><b>Android:</b> {mobile?.downloads.some((d) => d.id === "android")
+              <div className="card"><h3>Phone</h3><p>Also on <a href="https://jace-store-deb.vercel.app/project/jace-social-mobile">Jace Store</a>.{" "}<b>Android:</b> {mobile?.downloads.some((d) => d.id === "android")
                 ? <>download the app <a href="#download">above</a>, open it and allow installing from your browser.</>
                 : <>coming soon. Until then, open <a href="/app">the web app</a> and choose <b>Add to Home screen</b>.</>}
                 {" "}<b>iPhone:</b> open <a href="/app">the web app</a> in Safari, tap <b>Share → Add to Home Screen</b>.
