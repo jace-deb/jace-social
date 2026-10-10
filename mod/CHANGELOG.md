@@ -1,5 +1,8 @@
 # Jace Social mod changelog
 
+## 1.4.1
+- **Camera and screen sharing in calls:** when the friend you're calling turns on their camera or shares their screen, you get a notification. Press **J**, then **Watch**, and the call moves to Jace Social, where you can see it. Needs Jace Launcher 1.3.2 or later.
+
 ## 1.4.0
 - **Servers in game:** a new **Servers** button lists your Jace Social servers. Open one to see its channels by category, chat in text channels, and see who's in voice. Join a server by pasting an invite code or link.
 - **Remove friends** from the friends list (click ✕, then **Sure?**).
