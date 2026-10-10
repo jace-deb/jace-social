@@ -17,7 +17,7 @@ import java.util.Map;
 /**
  * Jace Social servers in game: your servers (and joining one with an invite), then a
  * server's channels by category. Text channels open in the chat screen; voice channels
- * show who's in them (talk in the Jace Social app or Jace Launcher).
+ * show who's in them, and you can join them (the voice runs in Jace Launcher, see Calls).
  */
 public class ServersScreen extends Screen {
 	private static final int ROW = 22;
@@ -45,6 +45,11 @@ public class ServersScreen extends Screen {
 		this.serverId = serverId;
 		this.serverName = name;
 		reload();
+	}
+
+	/** The call bar changed (joined, left, muted...). */
+	void callChanged() {
+		rebuildWidgets();
 	}
 
 	public boolean isServer(String id) {
@@ -112,7 +117,7 @@ public class ServersScreen extends Screen {
 	}
 
 	private int perPage() {
-		return Math.max(1, (height - 64 - 36) / ROW);
+		return Math.max(1, (height - 64 - 36 - (Calls.busy() ? CallBar.HEIGHT : 0)) / ROW);
 	}
 
 	@Override
@@ -143,6 +148,10 @@ public class ServersScreen extends Screen {
 				target.addProperty("name", "#" + Social.str(r.o, "name") + " · " + serverName);
 				addRenderableWidget(Button.builder(Component.literal(unread > 0 ? "Chat (" + unread + ")" : "Chat"),
 						b -> Compat.setScreen(ChatScreen.channel(this, target, names))).bounds(right - 70, y, 70, 20).build());
+			} else if (r.kind.equals("voice") && !Calls.inVoice(Social.str(r.o, "id")) && Calls.state().equals("idle")) {
+				addRenderableWidget(Button.builder(Component.literal("Join"),
+						b -> Calls.joinVoice(Social.str(r.o, "id"), Social.str(r.o, "name"), serverId, s -> { status = s; }))
+						.bounds(right - 70, y, 70, 20).build());
 			}
 			y += ROW;
 		}
@@ -152,6 +161,7 @@ public class ServersScreen extends Screen {
 			addRenderableWidget(Button.builder(Component.literal(">"), b -> { page++; rebuildWidgets(); }).bounds(cx + 24, by, 20, 20).build()).active = (page + 1) * per < rows.size();
 		}
 		addRenderableWidget(Button.builder(Component.literal(serverId == null ? "Done" : "< Servers"), b -> onClose()).bounds(cx + 74, by, 80, 20).build());
+		if (Calls.busy()) CallBar.addButtons(font, cx - 154, by - 24, this::addRenderableWidget, s -> { status = s; });
 	}
 
 	private void join() {
@@ -207,8 +217,10 @@ public class ServersScreen extends Screen {
 				case "category" -> g.text(font, font.plainSubstrByWidth(name.toUpperCase(), 230), left, y + 8, 0xFF8B919C);
 				case "voice" -> {
 					g.text(font, "♪ " + font.plainSubstrByWidth(name, 120), left + 8, y + 1, 0xFFE6E8EB);
-					g.text(font, font.plainSubstrByWidth(r.extra.isEmpty() ? "Voice - join in the Jace Social app" : "In voice: " + r.extra, 290),
-							left + 8, y + 11, r.extra.isEmpty() ? 0xFF6B717C : 0xFF3DDC84);
+					boolean here = Calls.inVoice(Social.str(r.o, "id"));
+					g.text(font, font.plainSubstrByWidth(here ? "You're here" + (r.extra.isEmpty() ? "" : " · " + r.extra)
+							: r.extra.isEmpty() ? "Voice - nobody here" : "In voice: " + r.extra, 220),
+							left + 8, y + 11, here || !r.extra.isEmpty() ? 0xFF3DDC84 : 0xFF6B717C);
 				}
 				default -> {
 					int unread = r.o.has("unread") ? r.o.get("unread").getAsInt() : 0;
@@ -217,6 +229,7 @@ public class ServersScreen extends Screen {
 			}
 			y += ROW;
 		}
+		if (Calls.busy()) CallBar.draw(g, font, left, height - 28 - CallBar.HEIGHT + 2);
 		if (rows.isEmpty() && !status.equals("Loading…") && serverId == null) {
 			String hint = "Paste an invite above, or make a server in the Jace Social app";
 			g.text(font, hint, cx - font.width(hint) / 2, 80, 0xFF8B919C);

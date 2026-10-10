@@ -178,14 +178,15 @@ function Main({ me, setMe, signOut, inviteCode }: {
   const [calls] = useState(() => new Calls(err, (name) => notifyUser(`${name} is calling`, "Open Jace Social to answer", { important: true })));
   const call = useCall(calls);
   // Jace Launcher (voice only) sends people here to see video: #move_call=<call id>&peer=<uuid>&name=<name>
+  // ...or to join a voice room here: #join_voice=<channel id>&server=<server id or empty>&name=<channel name>
   const [moveCall, setMoveCall] = useState<{ id: string; peer: string; name: string } | null>(null);
+  const [moveVoice, setMoveVoice] = useState<{ id: string; server: string | null; name: string } | null>(null);
   useEffect(() => {
     const h = new URLSearchParams(location.hash.slice(1));
-    const id = h.get("move_call"), peer = h.get("peer");
-    if (id && peer) {
-      setMoveCall({ id, peer, name: h.get("name") ?? "" });
-      history.replaceState(null, "", location.pathname + location.search);
-    }
+    const id = h.get("move_call"), peer = h.get("peer"), room = h.get("join_voice");
+    if (id && peer) setMoveCall({ id, peer, name: h.get("name") ?? "" });
+    if (room) setMoveVoice({ id: room, server: h.get("server") || null, name: h.get("name") ?? "" });
+    if ((id && peer) || room) history.replaceState(null, "", location.pathname + location.search);
   }, []);
   const [voice] = useState(() => new Voice(err));
   const room = useVoice(voice);
@@ -625,6 +626,19 @@ function Main({ me, setMe, signOut, inviteCode }: {
           <button className="btn primary small" onClick={() => { setMoveCall(null); void calls.takeOver(moveCall.peer, people[moveCall.peer]?.name || moveCall.name, moveCall.id); }}>
             Move call here</button>
           <button className="btn small" onClick={() => setMoveCall(null)}>Not now</button>
+        </div>
+      )}
+      {moveVoice && room.channelId !== moveVoice.id && (
+        <div className="call-panel" role="dialog" aria-label="Join voice here">
+          <div className="call-who"><b>🔊 {moveVoice.name || "Voice"}</b>
+            <span>Join here to see everyone's camera and screen.</span></div>
+          <button className="btn primary small" onClick={() => {
+            const v = moveVoice;
+            setMoveVoice(null);
+            void voice.join(me.uuid, v.id, v.server, v.name);
+            go(v.server ? { kind: "server", id: v.server, channel: v.id } : { kind: "group", id: v.id });
+          }}>Join voice</button>
+          <button className="btn small" onClick={() => setMoveVoice(null)}>Not now</button>
         </div>
       )}
       {toast && <div role="alert" className="toast">{toast}</div>}

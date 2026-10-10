@@ -217,14 +217,15 @@ export class Calls {
       try {
         const { signal } = await api<{ signal: { sdp: string } }>(`/calls?id=${e.id}`);
         const pc = this.pc;
-        const { sdp: offer, kinds } = readStreams(signal.sdp);
-        this.remoteKinds = kinds;
+        const { sdp: offer, kinds, noYield } = readStreams(signal.sdp);
         if (pc.signalingState !== "stable" || this.making) {
           // both changed something at once: the caller keeps its offer, the one who answered gives way
-          if (this.info.state === "in-call" && this.callerSide) return;
+          // (Jace Launcher can't give way, so we always do)
+          if (this.info.state === "in-call" && this.callerSide && !noYield) return;
           if (pc.signalingState === "have-local-offer") await pc.setLocalDescription({ type: "rollback" });
           this.pending = true;
         }
+        this.remoteKinds = kinds;
         await pc.setRemoteDescription({ type: "offer", sdp: offer });
         if (!kinds.camera && this.info.remoteCamera) this.set({ ...this.info, remoteCamera: null });
         if (!kinds.screen && this.info.remoteScreen) this.set({ ...this.info, remoteScreen: null });

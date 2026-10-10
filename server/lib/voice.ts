@@ -191,14 +191,15 @@ export class Voice {
         const isNew = !this.peers.has(e.from);
         const peer = this.peers.get(e.from) ?? this.newPeer(e.from);
         const pc = peer.pc;
+        const { sdp: offer, kinds, noYield } = readStreams(signal.sdp);
         if (pc.signalingState !== "stable" || peer.making) {
           // both sides changed something at once: the bigger id keeps its offer (the other side
           // answers it), the smaller id gives way and sends its own change again afterwards
-          if (this.me > e.from) return;
+          // (Jace Launcher can't give way, so we always do)
+          if (this.me > e.from && !noYield) return;
           if (pc.signalingState === "have-local-offer") await pc.setLocalDescription({ type: "rollback" });
           peer.pending = true;
         }
-        const { sdp: offer, kinds } = readStreams(signal.sdp);
         peer.kinds = kinds;
         await pc.setRemoteDescription({ type: "offer", sdp: offer });
         if (!kinds.camera) this.clearVideo("cameras", e.from);

@@ -80,11 +80,7 @@ public class FriendsScreen extends Screen {
 	}
 
 	private int perPage() {
-		return Math.max(1, (height - 64 - 36 - (inCall() ? ROW : 0)) / ROW);
-	}
-
-	private static boolean inCall() {
-		return !Calls.state().equals("idle");
+		return Math.max(1, (height - 64 - 36 - (Calls.busy() ? CallBar.HEIGHT : 0)) / ROW);
 	}
 
 	private void setStatus(String s) {
@@ -94,39 +90,6 @@ public class FriendsScreen extends Screen {
 	/** The launcher says the call changed (ringing, answered, ended). */
 	void callChanged() {
 		rebuildWidgets();
-	}
-
-	/** Answer / Mute / Hang up, above the bottom buttons while there's a call. */
-	private void callButtons(int cx, int y) {
-		String state = Calls.state();
-		int x = cx + 154;
-		x -= 70;
-		addRenderableWidget(Button.builder(Component.literal(state.equals("ringing") ? "Decline" : "Hang up"),
-				b -> Calls.act(LauncherLink::hangUp, this::setStatus)).bounds(x, y, 70, 20).build());
-		if (state.equals("ringing")) {
-			x -= 64;
-			addRenderableWidget(Button.builder(Component.literal("Answer"), b -> Calls.act(LauncherLink::answer, this::setStatus))
-					.bounds(x, y, 62, 20).build());
-		} else if (state.equals("in-call")) {
-			x -= 64;
-			addRenderableWidget(Button.builder(Component.literal(Calls.muted() ? "Unmute" : "Mute"),
-					b -> Calls.act(LauncherLink::toggleMute, this::setStatus)).bounds(x, y, 62, 20).build());
-			if (Calls.peerVideo()) {
-				// video only works in Jace Social: this moves the call there (the launcher opens it)
-				x -= 62;
-				addRenderableWidget(Button.builder(Component.literal("Watch"), b -> Calls.watch(this::setStatus))
-						.bounds(x, y, 60, 20).build());
-			}
-		}
-	}
-
-	private static String callText() {
-		return switch (Calls.state()) {
-			case "calling" -> "Calling " + Calls.peerName() + "…";
-			case "ringing" -> Calls.peerName() + " is calling you";
-			default -> Calls.peerVideo() ? Calls.peerName() + "'s " + Calls.videoWhat() + " is on"
-					: "In a call with " + Calls.peerName() + (Calls.muted() ? " (muted)" : "");
-		};
 	}
 
 	@Override
@@ -171,6 +134,13 @@ public class FriendsScreen extends Screen {
 				x -= 56;
 				addRenderableWidget(Button.builder(Component.literal(unread > 0 ? "Chat (" + unread + ")" : "Chat"),
 						b -> Compat.setScreen(ChatScreen.group(this, r.f))).bounds(x, y, 56, 20).build());
+				String gid = Social.str(r.f, "id");
+				if (!Calls.inVoice(gid) && Calls.state().equals("idle")) {
+					// the group's call (a voice room, like a server voice channel)
+					x -= 48;
+					addRenderableWidget(Button.builder(Component.literal("Voice"),
+							b -> Calls.joinVoice(gid, Social.str(r.f, "name"), "", this::setStatus)).bounds(x, y, 46, 20).build());
+				}
 			} else if (r.kind.equals("outgoing")) {
 				x -= 56;
 				addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> act(() -> Social.removeFriend(uuid)))
@@ -194,7 +164,7 @@ public class FriendsScreen extends Screen {
 				x -= 58;
 				addRenderableWidget(Button.builder(Component.literal(unread > 0 ? "Chat (" + unread + ")" : "Chat"),
 						b -> Compat.setScreen(new ChatScreen(this, r.f))).bounds(x, y, 56, 20).build());
-				if (r.f.get("online").getAsBoolean() && Calls.state().equals("idle")) {
+				if (r.f.get("online").getAsBoolean() && !Calls.busy()) {
 					x -= 42;
 					addRenderableWidget(Button.builder(Component.literal("Call"), b -> Calls.call(r.f, this::setStatus))
 							.bounds(x, y, 40, 20).build());
@@ -208,7 +178,7 @@ public class FriendsScreen extends Screen {
 		}
 
 		int by = height - 28;
-		if (inCall()) callButtons(cx, by - ROW);
+		if (Calls.busy()) CallBar.addButtons(font, cx - 154, by - 24, this::addRenderableWidget, this::setStatus);
 		IntegratedServer sp = minecraft.getSingleplayerServer();
 		if (sp != null && !sp.isPublished()) {
 			addRenderableWidget(Button.builder(Component.literal("Host this world for friends"), b -> Compat.setScreen(new HostScreen(this)))
@@ -320,10 +290,7 @@ public class FriendsScreen extends Screen {
 			g.text(font, font.plainSubstrByWidth(line, 170), left + 10, y + 11, 0xFF8B919C);
 			y += ROW;
 		}
-		if (inCall()) {
-			g.fill(left, height - 52 + 6, left + 6, height - 52 + 12, 0xFF3DDC84);
-			g.text(font, font.plainSubstrByWidth(callText(), Calls.state().equals("in-call") && Calls.peerVideo() ? 106 : 170), left + 10, height - 52 + 6, 0xFFFFFFFF);
-		}
+		if (Calls.busy()) CallBar.draw(g, font, left, height - 28 - CallBar.HEIGHT + 2);
 		if (data != null && rows.isEmpty()) {
 			String hint = "No friends yet - add one by their Minecraft username above";
 			g.text(font, hint, cx - font.width(hint) / 2, 80, 0xFF8B919C);

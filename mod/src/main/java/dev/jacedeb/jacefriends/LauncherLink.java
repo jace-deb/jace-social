@@ -43,7 +43,8 @@ public final class LauncherLink {
 		return json;
 	}
 
-	/** {state: idle|calling|ringing|in-call, peer, peer_name, muted, peer_camera, peer_screen} */
+	/** {state: idle|calling|ringing|in-call, peer, peer_name, muted, camera, sharing, peer_camera, peer_screen,
+	 *  voice: {channel_id, channel_name, muted, deafened, camera, sharing, can_video, participants} or null} */
 	public static JsonObject status() throws Exception { return call("GET", "/call", null); }
 
 	public static void start(String uuid, String name) throws Exception {
@@ -58,4 +59,23 @@ public final class LauncherLink {
 	public static void toggleMute() throws Exception { call("POST", "/call/mute", new JsonObject()); }
 	/** Open the call in Jace Social (video works there), which takes the call over from the launcher. */
 	public static void watch() throws Exception { call("POST", "/call/watch", new JsonObject()); }
+	/** Your camera / screen sharing in the call, on or off. */
+	public static void camera() throws Exception { call("POST", "/call/camera", new JsonObject()); }
+	public static void screen() throws Exception { call("POST", "/call/screen", new JsonObject()); }
+
+	// voice rooms: server voice channels and group calls ("voice" in status())
+	public static void voiceJoin(String channelId, String name, String serverId) throws Exception {
+		JsonObject b = new JsonObject();
+		b.addProperty("channel_id", channelId);
+		b.addProperty("name", name);
+		b.addProperty("server_id", serverId == null ? "" : serverId);
+		call("POST", "/voice/join", b);
+	}
+
+	public static void voiceLeave() throws Exception { call("POST", "/voice/leave", new JsonObject()); }
+	public static void voiceMute() throws Exception { call("POST", "/voice/mute", new JsonObject()); }
+	public static void voiceDeafen() throws Exception { call("POST", "/voice/deafen", new JsonObject()); }
+	public static void voiceCamera() throws Exception { call("POST", "/voice/camera", new JsonObject()); }
+	public static void voiceScreen() throws Exception { call("POST", "/voice/screen", new JsonObject()); }
+	public static void voiceWatch() throws Exception { call("POST", "/voice/watch", new JsonObject()); }
 }

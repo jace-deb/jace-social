@@ -1,5 +1,11 @@
 # Jace Social mod changelog
 
+## 1.5.0
+- **Voice channels and group calls:** join a server's voice channel (**Servers** → open a server → **Join**) or a group chat's call (**Voice** next to the group). Everyone's in one call together, like in the Jace Social app.
+- **Camera and screen sharing:** in a call or a voice channel, **Camera** and **Share** send your camera or your screen to everyone else.
+- A call bar at the bottom of the Friends and Servers screens: mute, deafen, camera, share, watch and leave. You get a notification when someone in your voice channel turns on their camera or shares their screen. **Watch** opens it in Jace Social.
+- Needs Jace Launcher 1.4.0 or later (the voice runs there).
+
 ## 1.4.1
 - **Camera and screen sharing in calls:** when the friend you're calling turns on their camera or shares their screen, you get a notification. Press **J**, then **Watch**, and the call moves to Jace Social, where you can see it. Needs Jace Launcher 1.3.2 or later.
 
