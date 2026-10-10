@@ -35,8 +35,9 @@ def hotkey_imports() -> list[str]:
     platform's code by name at runtime, so PyInstaller doesn't see it."""
     if sys.platform.startswith("linux"):
         return ["--collect-submodules", "Xlib"]
-    plat = "win32" if sys.platform == "win32" else "darwin"
-    return [arg for mod in (f"pynput.keyboard._{plat}", f"pynput.mouse._{plat}", f"pynput._util.{plat}")
+    if sys.platform == "darwin":
+        return []                                   # the system's own hotkeys, through ctypes
+    return [arg for mod in ("pynput.keyboard._win32", "pynput.mouse._win32", "pynput._util.win32")
             for arg in ("--hidden-import", mod)]
 
 

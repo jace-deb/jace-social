@@ -680,6 +680,10 @@ def self_test(app) -> int:
         if sys.platform.startswith("linux"):
             from Xlib import XK, display  # noqa: F401
             assert XK.string_to_keysym("F12"), "Xlib keysyms missing"
+        elif sys.platform == "darwin":
+            hk = hotkeys.HotKey()                        # really register one (and let it go) with macOS
+            hk.set("Ctrl+Alt+Shift+F12")
+            hk.stop()
         else:
             from pynput import keyboard  # noqa: F401
         w = Window(url="about:blank")

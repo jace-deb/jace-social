@@ -1,7 +1,10 @@
 # Jace Social desktop app changelog
 
+## 1.0.6
+- macOS: fixes the app closing when you set the overlay shortcut. It now uses macOS's own keyboard shortcuts, so it also no longer needs Accessibility permission.
+
 ## 1.0.5
-- **Game overlay:** pick a keyboard shortcut in Settings (for example Ctrl+Shift+J) and press it in a game: Jace Social pops up on top, small, on the side of the screen. Press it again (or Esc) to hide it. It's the same Jace Social as the main window, so calls and voice keep going. Drag its top bar to move it; it remembers where. Works over games in windowed or borderless mode (not exclusive fullscreen). On macOS, allow Jace Social under Accessibility the first time. On Linux it needs X11 (games through XWayland and Proton work too).
+- **Game overlay:** pick a keyboard shortcut in Settings (for example Ctrl+Shift+J) and press it in a game: Jace Social pops up on top, small, on the side of the screen. Press it again (or Esc) to hide it. It's the same Jace Social as the main window, so calls and voice keep going. Drag its top bar to move it; it remembers where. Works over games in windowed or borderless mode (not exclusive fullscreen). On Linux it needs X11 (games through XWayland and Proton work too).
 - **Open on startup** is now a switch in Settings: turn starting Jace Social when you sign in to your computer on or off any time.
 - The tray menu has **Show overlay**.
 
