@@ -8,6 +8,7 @@ comes from app/CHANGELOG.md (mobile/CHANGELOG.md). Needs Node and JACE_STORE_TOK
 project doesn't exist yet, it's skipped with a warning.
 """
 import json
+import os
 import re
 import subprocess
 import sys
@@ -40,8 +41,11 @@ def main():
         sys.exit(f"{tag}: expected app-v* or mobile-v*")
     SLUG, changelog_file, title, FILES = KINDS[prefix]
     version = tag.removeprefix(prefix)
-    req = urllib.request.Request(f"https://api.github.com/repos/{REPO}/releases/tags/{tag}",
-                                 headers={"Accept": "application/vnd.github+json", "User-Agent": "jace-social-publish"})
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "jace-social-publish"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:       # signed in, GitHub's limit is per repo instead of per (shared) runner address
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(f"https://api.github.com/repos/{REPO}/releases/tags/{tag}", headers=headers)
     with urllib.request.urlopen(req, timeout=30) as r:
         assets = json.load(r).get("assets", [])
     found = [(a, label, plat) for end, label, plat in FILES for a in assets if a["name"].endswith(end)]

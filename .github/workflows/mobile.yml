@@ -170,6 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       JACE_STORE_TOKEN: ${{ secrets.JACE_STORE_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
       - name: Publish to Jace Store
