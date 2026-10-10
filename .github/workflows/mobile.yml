@@ -66,6 +66,42 @@ jobs:
           name: mobile-android
           path: dist/*.apk
 
+  android-test:
+    # install the APK on an emulator, open it and screenshot it (the screenshot is a workflow artifact)
+    needs: android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: mobile-android
+          path: dl
+      - name: KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install -r dl/*.apk
+            adb shell pm grant dev.jacedeb.jacesocial android.permission.RECORD_AUDIO
+            adb shell monkey -p dev.jacedeb.jacesocial -c android.intent.category.LAUNCHER 1
+            sleep 25
+            adb exec-out screencap -p > home.png
+            adb shell am start -a android.intent.action.VIEW -d jacesocial://invite/jacecraft dev.jacedeb.jacesocial
+            sleep 12
+            adb exec-out screencap -p > invite.png
+            adb shell pidof dev.jacedeb.jacesocial
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mobile-android-screenshots
+          path: "*.png"
+
   ios:
     runs-on: macos-15
     timeout-minutes: 40
@@ -105,7 +141,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/mobile-v')
-    needs: [android, ios]
+    needs: [android, android-test, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
