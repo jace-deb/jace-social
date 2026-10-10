@@ -58,6 +58,10 @@ textarea { resize: vertical; }
 
 /* layout */
 .app { display: grid; grid-template-columns: 72px 248px 1fr 260px; height: 100vh; height: 100dvh; overflow: hidden; }
+/* one row exactly the window's height: long chats scroll inside .messages instead of growing the
+   page and pushing your account bar and the message box off the screen */
+.app { grid-template-rows: minmax(0, 1fr); }
+.app > * { min-height: 0; }
 .app.no-right { grid-template-columns: 72px 248px 1fr; }
 .rail { background: var(--bg); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0;
   overflow-y: auto; scrollbar-width: none; }
