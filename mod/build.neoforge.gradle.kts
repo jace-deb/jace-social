@@ -108,9 +108,6 @@ tasks {
         val name = project.property("mod.id")
         inputs.property("mod_id", name)
         from("../../LICENSE") { rename { "$it-$name" } }
-        // jace_social_1.4.0+26.3-neoforge.jar (and ...-sources.jar); the mod id stays jacefriends
-        val fileVersion = project.version.toString()
-        archiveFileName.set(archiveClassifier.map { c -> "jace_social_$fileVersion-neoforge" + (if (c.isEmpty()) "" else "-$c") + ".jar" })
     }
 
     register<Copy>("buildAndCollect") {
@@ -120,5 +117,14 @@ tasks {
         inputs.property("version", project.property("mod.version"))
         from(jar.flatMap { it.archiveFile }, named<Jar>("sourcesJar").flatMap { it.archiveFile })
         into(rootProject.layout.buildDirectory.file("libs/${project.property("mod.version")}"))
+    }
+}
+
+// Jar files are named jace_social_1.4.0+26.3-neoforge.jar (and ...-sources.jar); the mod id stays jacefriends.
+// Every archive task, including Loom's remapJar and remapSourcesJar, and after the loader plugin set its own name.
+afterEvaluate {
+    val fileVersion = project.version.toString()
+    tasks.withType<AbstractArchiveTask>().configureEach {
+        archiveFileName.set(archiveClassifier.map { c -> "jace_social_$fileVersion-neoforge" + (if (c.isEmpty()) "" else "-$c") + ".jar" })
     }
 }
