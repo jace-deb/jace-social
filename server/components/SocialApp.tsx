@@ -177,6 +177,16 @@ function Main({ me, setMe, signOut, inviteCode }: {
   }, []);
   const [calls] = useState(() => new Calls(err, (name) => notifyUser(`${name} is calling`, "Open Jace Social to answer", { important: true })));
   const call = useCall(calls);
+  // Jace Launcher (voice only) sends people here to see video: #move_call=<call id>&peer=<uuid>&name=<name>
+  const [moveCall, setMoveCall] = useState<{ id: string; peer: string; name: string } | null>(null);
+  useEffect(() => {
+    const h = new URLSearchParams(location.hash.slice(1));
+    const id = h.get("move_call"), peer = h.get("peer");
+    if (id && peer) {
+      setMoveCall({ id, peer, name: h.get("name") ?? "" });
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+  }, []);
   const [voice] = useState(() => new Voice(err));
   const room = useVoice(voice);
   useEffect(() => {
@@ -607,6 +617,16 @@ function Main({ me, setMe, signOut, inviteCode }: {
           onOpenChannel={(id) => setView({ kind: "server", id: detail.server.id, channel: id })} />
       )}
       <CallPanel calls={calls} info={call} people={people} />
+      {moveCall && call.state === "idle" && (
+        <div className="call-panel" role="dialog" aria-label="Move your call here">
+          <Avatar p={people[moveCall.peer] ?? { name: moveCall.name || "?" }} size={44} />
+          <div className="call-who"><b>{people[moveCall.peer]?.name || moveCall.name || "Your call"}</b>
+            <span>Your call is in Jace Launcher. Move it here to see their camera and screen.</span></div>
+          <button className="btn primary small" onClick={() => { setMoveCall(null); void calls.takeOver(moveCall.peer, people[moveCall.peer]?.name || moveCall.name, moveCall.id); }}>
+            Move call here</button>
+          <button className="btn small" onClick={() => setMoveCall(null)}>Not now</button>
+        </div>
+      )}
       {toast && <div role="alert" className="toast">{toast}</div>}
     </div>
   );

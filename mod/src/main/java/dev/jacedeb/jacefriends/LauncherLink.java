@@ -43,7 +43,7 @@ public final class LauncherLink {
 		return json;
 	}
 
-	/** {state: idle|calling|ringing|in-call, peer, peer_name, muted} */
+	/** {state: idle|calling|ringing|in-call, peer, peer_name, muted, peer_camera, peer_screen} */
 	public static JsonObject status() throws Exception { return call("GET", "/call", null); }
 
 	public static void start(String uuid, String name) throws Exception {
@@ -56,4 +56,6 @@ public final class LauncherLink {
 	public static void answer() throws Exception { call("POST", "/call/answer", new JsonObject()); }
 	public static void hangUp() throws Exception { call("POST", "/call/hangup", new JsonObject()); }
 	public static void toggleMute() throws Exception { call("POST", "/call/mute", new JsonObject()); }
+	/** Open the call in Jace Social (video works there), which takes the call over from the launcher. */
+	public static void watch() throws Exception { call("POST", "/call/watch", new JsonObject()); }
 }

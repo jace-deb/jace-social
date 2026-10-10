@@ -111,6 +111,12 @@ public class FriendsScreen extends Screen {
 			x -= 64;
 			addRenderableWidget(Button.builder(Component.literal(Calls.muted() ? "Unmute" : "Mute"),
 					b -> Calls.act(LauncherLink::toggleMute, this::setStatus)).bounds(x, y, 62, 20).build());
+			if (Calls.peerVideo()) {
+				// video only works in Jace Social: this moves the call there (the launcher opens it)
+				x -= 62;
+				addRenderableWidget(Button.builder(Component.literal("Watch"), b -> Calls.watch(this::setStatus))
+						.bounds(x, y, 60, 20).build());
+			}
 		}
 	}
 
@@ -118,7 +124,8 @@ public class FriendsScreen extends Screen {
 		return switch (Calls.state()) {
 			case "calling" -> "Calling " + Calls.peerName() + "…";
 			case "ringing" -> Calls.peerName() + " is calling you";
-			default -> "In a call with " + Calls.peerName() + (Calls.muted() ? " (muted)" : "");
+			default -> Calls.peerVideo() ? Calls.peerName() + "'s " + Calls.videoWhat() + " is on"
+					: "In a call with " + Calls.peerName() + (Calls.muted() ? " (muted)" : "");
 		};
 	}
 
@@ -315,7 +322,7 @@ public class FriendsScreen extends Screen {
 		}
 		if (inCall()) {
 			g.fill(left, height - 52 + 6, left + 6, height - 52 + 12, 0xFF3DDC84);
-			g.text(font, font.plainSubstrByWidth(callText(), 170), left + 10, height - 52 + 6, 0xFFFFFFFF);
+			g.text(font, font.plainSubstrByWidth(callText(), Calls.state().equals("in-call") && Calls.peerVideo() ? 106 : 170), left + 10, height - 52 + 6, 0xFFFFFFFF);
 		}
 		if (data != null && rows.isEmpty()) {
 			String hint = "No friends yet - add one by their Minecraft username above";

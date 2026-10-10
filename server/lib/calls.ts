@@ -4,7 +4,7 @@
 // Like the launcher, each side sends its full description once ICE gathering is done
 // (no trickle), and audio goes straight between players or through the TURN relay.
 import { api } from "./client";
-import { getCamera, readStreams, tagStreams, type StreamKinds } from "./media";
+import { getCamera, markMove, readStreams, tagStreams, type StreamKinds } from "./media";
 
 export type CallState = "idle" | "calling" | "ringing" | "in-call";
 export type CallInfo = {
@@ -37,7 +37,8 @@ export class Calls {
   private making = false;          // an offer is being made or waiting for its answer...
   private pending = false;         // ...so this change goes out after it
   private callerSide = false;      // we placed the call (we keep our change if both change at once)
-  private audio: HTMLAudioElement | null = null;
+  private moving = false;          // taking over our call from another device (see takeOver)
+  private audio = new Map<string, HTMLAudioElement>();   // their voice, and their screen's sound
   private timeout: ReturnType<typeof setTimeout> | null = null;
   private ring: { stop: () => void } | null = null;
   private listeners = new Set<(i: CallInfo) => void>();
@@ -65,6 +66,30 @@ export class Calls {
       this.startTimeout();
     } catch (e) {
       if (this.callId === id) this.end((e as Error).message);
+    }
+  }
+
+  /** Take over a call we're in on another device (Jace Launcher can't show video, so it sends
+   *  people here). Same call id; their side swaps connections without ringing, and the other
+   *  device drops out when it sees their answer. */
+  async takeOver(uuid: string, name: string, callId: string) {
+    if (!Calls.supported() || this.info.state !== "idle" || !/^[A-Za-z0-9_-]{8,64}$/.test(callId)) return;
+    this.callId = callId;
+    this.callerSide = true;
+    this.moving = true;
+    this.set({ ...IDLE, state: "calling", peer: uuid, peerName: name || "A friend" });
+    try {
+      const pc = await this.newPeer(callId);
+      // room for their camera and screen (with its sound): an answer can't add what the offer lacks
+      pc.addTransceiver("video", { direction: "recvonly" });
+      pc.addTransceiver("video", { direction: "recvonly" });
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      const sdp = markMove(await describe(pc, await pc.createOffer()));
+      if (this.callId !== callId) return;
+      await api("/calls", { body: { to: uuid, call_id: callId, kind: "offer", sdp } });
+      this.timeout = setTimeout(() => { if (this.moving && this.info.state === "calling") this.end("Couldn't move the call here - it's still going on in Jace Launcher"); }, 20_000);
+    } catch (e) {
+      if (this.callId === callId) this.end((e as Error).message);   // not hangUp: the call goes on where it was
     }
   }
 
@@ -154,13 +179,17 @@ export class Calls {
   /** A live "call" event from the player's channel. */
   async onSignal(e: Signal) {
     if (e.kind === "offer") {
-      if (this.info.state !== "idle") {          // busy: tell them
-        void api("/calls", { body: { to: e.from, call_id: e.call_id, kind: "hangup" } }).catch(() => {});
-        return;
-      }
       try {
         const { signal } = await api<{ signal: { sdp: string; sender: string; name: string } }>(`/calls?id=${e.id}`);
-        if (this.info.state !== "idle") return;
+        if (this.info.state === "in-call" && e.call_id === this.callId && signal.sender === this.info.peer) {
+          await this.replace(signal.sdp);         // they moved our call to another of their devices
+          return;
+        }
+        if (readStreams(signal.sdp).moving) return;   // someone else's call moving between devices: not for us
+        if (this.info.state !== "idle") {          // busy: tell them
+          void api("/calls", { body: { to: signal.sender, call_id: e.call_id, kind: "hangup" } }).catch(() => {});
+          return;
+        }
         this.callId = e.call_id;
         this.offerSdp = signal.sdp;
         this.set({ ...IDLE, state: "ringing", peer: signal.sender, peerName: signal.name || e.name || "A friend" });
@@ -173,10 +202,13 @@ export class Calls {
     } else if (e.kind === "answer" && this.info.state === "calling") {
       this.stopRing();
       this.clearTimeout();
+      this.moving = false;
       this.set({ ...this.info, state: "in-call", startedAt: Date.now() });
       try {
         const { signal } = await api<{ signal: { sdp: string } }>(`/calls?id=${e.id}`);
-        await this.pc?.setRemoteDescription({ type: "answer", sdp: signal.sdp });
+        const { sdp, kinds } = readStreams(signal.sdp);
+        this.remoteKinds = kinds;
+        await this.pc?.setRemoteDescription({ type: "answer", sdp });
       } catch (err) {
         this.hangUp((err as Error).message);
       }
@@ -206,6 +238,8 @@ export class Calls {
         await this.pc.setRemoteDescription({ type: "answer", sdp: signal.sdp });
         if (this.pending) { this.pending = false; void this.renegotiate(); }   // a change that waited for this answer
       } catch (err) { console.warn("reanswer", err); }
+    } else if (e.kind === "answer" && this.info.state === "in-call" && !this.moving) {
+      this.end("Moved the call to another device");   // another of our devices took this call over
     } else if (e.kind === "hangup") {
       const n = this.info.peerName;
       this.end(this.info.state === "in-call" ? `${n} hung up` : this.info.state === "calling" ? `${n} didn't pick up` : "");
@@ -213,6 +247,32 @@ export class Calls {
   }
 
   // -- internals
+  /** Answer a moved call on a new connection, keeping our camera and screen share going. */
+  private async replace(offerSdp: string) {
+    const id = this.callId;
+    const old = this.pc, oldMic = this.mic;
+    const { sdp: offer, kinds } = readStreams(offerSdp);
+    this.remoteKinds = kinds;
+    this.making = this.pending = false;
+    this.callerSide = false;
+    this.set({ ...this.info, remoteCamera: null, remoteScreen: null });
+    try {
+      const pc = await this.newPeer(id);
+      old?.close();
+      for (const el of this.audio.values()) el.srcObject = null;
+      this.audio.clear();
+      if (oldMic !== this.mic) oldMic?.getTracks().forEach((t) => t.stop());
+      await pc.setRemoteDescription({ type: "offer", sdp: offer });
+      if (this.camera) this.cameraSenders = this.camera.getTracks().map((t) => pc.addTrack(t, this.camera!));
+      if (this.screen) this.screenSenders = this.screen.getTracks().map((t) => pc.addTrack(t, this.screen!));
+      const sdp = tagStreams(await describe(pc, await pc.createAnswer()), { camera: this.camera?.id, screen: this.screen?.id });
+      if (this.callId !== id) return;
+      await api("/calls", { body: { to: this.info.peer, call_id: id, kind: "answer", sdp } });
+    } catch (err) {
+      if (this.callId === id) this.hangUp((err as Error).message);
+    }
+  }
+
   /** The connection for call `id`, with the microphone added; throws if the call ended meanwhile. */
   private async newPeer(id: string) {
     const { ice_servers } = await api<{ ice_servers: RTCIceServer[] }>("/calls/ice");
@@ -238,9 +298,11 @@ export class Calls {
         ev.track.addEventListener("unmute", () => this.set({ ...this.info, [key]: s }));
         return;
       }
-      if (!this.audio) { this.audio = new Audio(); this.audio.autoplay = true; }
-      this.audio.srcObject = ev.streams[0] ?? new MediaStream([ev.track]);
-      void this.audio.play().catch(() => {});
+      const s = ev.streams[0] ?? new MediaStream([ev.track]);
+      let el = this.audio.get(s.id);
+      if (!el) { el = new Audio(); el.autoplay = true; this.audio.set(s.id, el); }
+      el.srcObject = s;
+      void el.play().catch(() => {});
     };
     pc.onconnectionstatechange = () => {
       if (this.pc === pc && pc.connectionState === "failed") this.hangUp("Couldn't connect the call");
@@ -272,8 +334,9 @@ export class Calls {
     this.camera = null;
     this.cameraSenders = [];
     this.remoteKinds = {};
-    this.making = this.pending = this.callerSide = false;
-    if (this.audio) { this.audio.srcObject = null; this.audio = null; }
+    this.making = this.pending = this.callerSide = this.moving = false;
+    for (const el of this.audio.values()) el.srcObject = null;
+    this.audio.clear();
     this.callId = "";
     this.offerSdp = "";
     this.set(IDLE);
