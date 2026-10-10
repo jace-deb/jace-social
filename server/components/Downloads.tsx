@@ -6,6 +6,7 @@ export type Download = { id: string; url: string; label: string; note: string; m
 
 function guess(): string | null {
   const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) return "android";
   if (/Windows/i.test(ua)) return "windows";
   if (/Mac OS X|Macintosh/i.test(ua)) return "mac-arm";
   if (/Linux|X11/i.test(ua) && !/Android/i.test(ua)) return "linux";

@@ -19,22 +19,26 @@ const PLATFORMS = [
   { id: "mac-intel", suffix: "-macos-x86_64.app.zip", label: "macOS", note: "Intel" },
   { id: "linux", suffix: "-x86_64.AppImage", label: "Linux", note: "AppImage" },
 ];
+const PHONE = [
+  { id: "android", suffix: "-android.apk", label: "Android", note: "APK" },
+  { id: "ios", suffix: "-ios-unsigned.ipa", label: "iPhone", note: "for sideloading" },
+];
 
-/** The newest desktop app release's downloads (cached for 10 minutes). */
-async function latestApp(): Promise<{ version: string; page: string; downloads: Download[] } | null> {
+/** The newest release's downloads for the desktop app (app-v*) or the phone app (mobile-v*), cached for 10 minutes. */
+async function latestApp(prefix = "app-v", platforms = PLATFORMS): Promise<{ version: string; page: string; downloads: Download[] } | null> {
   try {
     const r = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=20`, {
       headers: { Accept: "application/vnd.github+json", "User-Agent": "jace-social-site" }, next: { revalidate: 600 },
     });
     if (!r.ok) return null;
     const rels = await r.json() as { tag_name: string; draft: boolean; prerelease: boolean; html_url: string; assets: { name: string; browser_download_url: string; size: number }[] }[];
-    const rel = rels.find((x) => x.tag_name.startsWith("app-v") && !x.draft && !x.prerelease);
+    const rel = rels.find((x) => x.tag_name.startsWith(prefix) && !x.draft && !x.prerelease);
     if (!rel) return null;
-    const downloads = PLATFORMS.flatMap((p) => {
+    const downloads = platforms.flatMap((p) => {
       const a = rel.assets.find((x) => x.name.endsWith(p.suffix));
       return a ? [{ id: p.id, url: a.browser_download_url, label: p.label, note: p.note, mb: Math.round(a.size / 1048576) }] : [];
     });
-    return { version: rel.tag_name.replace(/^app-v/, ""), page: rel.html_url, downloads };
+    return { version: rel.tag_name.slice(prefix.length), page: rel.html_url, downloads };
   } catch {
     return null;
   }
@@ -63,7 +67,7 @@ const FEATURES: [string, string, string][] = [
 ];
 
 export default async function Home() {
-  const [app, count] = await Promise.all([latestApp(), players()]);
+  const [app, mobile, count] = await Promise.all([latestApp(), latestApp("mobile-v", PHONE), players()]);
   return (
     <div className="site">
       <header>
@@ -87,6 +91,7 @@ export default async function Home() {
           <div className="downloads" id="download">
             <a className="btn primary" href="/app">Open in your browser</a>
             {app?.downloads.length ? <Downloads list={app.downloads} /> : <a className="btn" href={`https://github.com/${REPO}/releases`}>⬇ Desktop app</a>}
+            {mobile?.downloads.some((d) => d.id === "android") && <Downloads list={mobile.downloads.filter((d) => d.id === "android")} />}
           </div>
           <p className="release-note">
             {app ? <>Desktop app {app.version} · <a href={app.page}>release notes</a> · free and open source</> : "Free and open source."}
@@ -123,6 +128,11 @@ export default async function Home() {
               <div className="card"><h3>Web</h3><p><a href="/app">Open the app</a> and sign in with Jace or Minecraft.</p></div>
               <div className="card"><h3>Desktop app</h3><p>Windows, macOS and Linux <a href="#download">above</a> or from the <a href={`https://github.com/${REPO}/releases`}>releases page</a>.
                 Notifications even when the window is closed, and invite links open right in the app.</p></div>
+              <div className="card"><h3>Phone</h3><p><b>Android:</b> {mobile?.downloads.some((d) => d.id === "android")
+                ? <>download the app <a href="#download">above</a>, open it and allow installing from your browser.</>
+                : <>coming soon. Until then, open <a href="/app">the web app</a> and choose <b>Add to Home screen</b>.</>}
+                {" "}<b>iPhone:</b> open <a href="/app">the web app</a> in Safari, tap <b>Share → Add to Home Screen</b>.
+                {mobile?.downloads.some((d) => d.id === "ios") && <> Or sideload the <a href={mobile.downloads.find((d) => d.id === "ios")!.url}>iPhone app</a> with AltStore or Sideloadly.</>}</p></div>
               <div className="card"><h3>Jace Launcher</h3><p><a href="https://jace-deb.github.io/jace-launcher/">Jace Launcher</a> has friends and chat built in.
                 Link your Jace account in <b>Settings → Jace Social</b>.</p></div>
               <div className="card"><h3>In Minecraft</h3><p>Install the <a href="https://jace-store-deb.vercel.app/project/jace-social-minecraft">Jace Social mod</a>

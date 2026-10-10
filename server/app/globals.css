@@ -62,6 +62,8 @@ textarea { resize: vertical; }
    page and pushing your account bar and the message box off the screen */
 .app { grid-template-rows: minmax(0, 1fr); }
 .app > * { min-height: 0; }
+/* phones: keep clear of the notch, the status bar and the home indicator (all 0 elsewhere) */
+.app { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 .app.no-right { grid-template-columns: 72px 248px 1fr; }
 .rail { background: var(--bg); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0;
   overflow-y: auto; scrollbar-width: none; }

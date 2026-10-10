@@ -200,6 +200,16 @@ export function inDesktop(): boolean {
   return !!(globalThis as unknown as { jaceDesktopPending?: boolean }).jaceDesktopPending;
 }
 
+/** True inside the Android / iOS app (mobile/: the live site in a native shell). */
+export function inMobileApp(): boolean {
+  return typeof navigator !== "undefined" && navigator.userAgent.includes("JaceSocialMobile/");
+}
+
+/** A phone or tablet (in a browser or the app). */
+export function onPhone(): boolean {
+  return typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/.test(navigator.userAgent);
+}
+
 /** Wait for the desktop bridge (it connects a moment after the page loads). */
 export function desktopReady(): Promise<DesktopBridge | null> {
   if (desktop() || !inDesktop()) return Promise.resolve(desktop());

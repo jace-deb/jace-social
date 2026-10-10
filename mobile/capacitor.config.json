@@ -1,0 +1,18 @@
+{
+  "appId": "dev.jacedeb.jacesocial",
+  "appName": "Jace Social",
+  "webDir": "www",
+  "backgroundColor": "#111317",
+  "appendUserAgent": "JaceSocialMobile/1.0.0",
+  "server": {
+    "url": "https://jace-social.vercel.app/app",
+    "allowNavigation": ["jace-social.vercel.app", "jaceo.vercel.app"],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "adjustMarginsForEdgeToEdge": "auto"
+  },
+  "ios": {
+    "contentInset": "never"
+  }
+}

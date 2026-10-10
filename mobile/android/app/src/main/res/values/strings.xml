@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Jace Social</string>
+    <string name="title_activity_main">Jace Social</string>
+    <string name="package_name">dev.jacedeb.jacesocial</string>
+    <string name="custom_url_scheme">dev.jacedeb.jacesocial</string>
+</resources>
