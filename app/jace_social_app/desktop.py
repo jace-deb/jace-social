@@ -170,6 +170,42 @@ def ask_running_copy_to_quit(status=print):
         time.sleep(1.5)                     # let Windows release its files
 
 
+def startup_enabled() -> bool | None:
+    """Does the app open when you sign in to your computer? None when it isn't installed."""
+    path = installed_path()
+    if not path:
+        return None
+    if sys.platform == "win32":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, wininstall.RUN_KEY) as k:
+                winreg.QueryValueEx(k, APP_NAME)
+            return True
+        except OSError:
+            return False
+    if sys.platform == "darwin":
+        return macinstall.LAUNCH_AGENT.exists()
+    return AUTOSTART_FILE.exists()
+
+
+def set_startup(on: bool):
+    """Open (hidden in the tray) when you sign in, or stop doing that."""
+    path = installed_path()
+    if not path:
+        raise RuntimeError("Install Jace Social first (open the download and finish setup)")
+    if sys.platform == "win32":
+        wininstall._set_startup(path if on else None)
+    elif sys.platform == "darwin":
+        macinstall._set_startup(path if on else None)
+    elif on:
+        _write(AUTOSTART_FILE, _desktop_entry(path, " --hidden").split("Actions=")[0])
+    else:
+        AUTOSTART_FILE.unlink(missing_ok=True)
+    rec = install_record()
+    parts = [p for p in rec.get("parts", []) if p != "startup"] + (["startup"] if on else [])
+    write_json(RECORD, {**rec, "parts": parts})
+
+
 SINGLE_INSTANCE_KEY = "jace-social-desktop"
 
 

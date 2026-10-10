@@ -1,3 +1,6 @@
 # PySide6 6.10+ needs icuuc.dll (breaks under Wine/Soda) and drops macOS 12, so stay on 6.9
 PySide6>=6.9,<6.10
 requests>=2.31
+# the game overlay's keyboard shortcut (jace_social_app/hotkeys.py)
+pynput>=1.7.7; sys_platform != "linux"
+python-xlib>=0.33; sys_platform == "linux"

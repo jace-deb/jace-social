@@ -1,5 +1,10 @@
 # Jace Social desktop app changelog
 
+## 1.0.5
+- **Game overlay:** pick a keyboard shortcut in Settings (for example Ctrl+Shift+J) and press it in a game: Jace Social pops up on top, small, on the side of the screen. Press it again (or Esc) to hide it. It's the same Jace Social as the main window, so calls and voice keep going. Drag its top bar to move it; it remembers where. Works over games in windowed or borderless mode (not exclusive fullscreen). On macOS, allow Jace Social under Accessibility the first time. On Linux it needs X11 (games through XWayland and Proton work too).
+- **Open on startup** is now a switch in Settings: turn starting Jace Social when you sign in to your computer on or off any time.
+- The tray menu has **Show overlay**.
+
 ## 1.0.4
 - **Updates like Jace Launcher:** the app checks for a new version a few seconds after it starts (and every few hours while it's open in the tray), then asks **Update now** or **Later** and shows what's new. It asks once per version; the green **Update** button stays in the sidebar until you update.
 - **Check for updates on startup** can be turned off in Settings, next to **Check for updates**.

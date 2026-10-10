@@ -30,6 +30,16 @@ def run(cmd, **kw):
     subprocess.run(list(map(str, cmd)), check=True, **kw)
 
 
+def hotkey_imports() -> list[str]:
+    """The overlay shortcut's libraries (see jace_social_app/hotkeys.py): both load their
+    platform's code by name at runtime, so PyInstaller doesn't see it."""
+    if sys.platform.startswith("linux"):
+        return ["--collect-submodules", "Xlib"]
+    plat = "win32" if sys.platform == "win32" else "darwin"
+    return [arg for mod in (f"pynput.keyboard._{plat}", f"pynput.mouse._{plat}", f"pynput._util.{plat}")
+            for arg in ("--hidden-import", mod)]
+
+
 def pyinstaller(name: str, icon: Path, extra=()) -> Path:
     shutil.rmtree(BUILD, ignore_errors=True)
     run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--log-level", "WARN",
@@ -38,7 +48,7 @@ def pyinstaller(name: str, icon: Path, extra=()) -> Path:
          "--paths", ROOT, "--add-data", f"{ASSETS}{os.pathsep}assets",
          "--hidden-import", "PySide6.QtWebEngineWidgets", "--hidden-import", "PySide6.QtWebEngineCore",
          "--hidden-import", "PySide6.QtWebChannel",
-         *extra, ROOT / "packaging" / "entry.py"])
+         *hotkey_imports(), *extra, ROOT / "packaging" / "entry.py"])
     return BUILD / "dist" / name
 
 

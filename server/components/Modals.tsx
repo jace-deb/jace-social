@@ -376,8 +376,59 @@ function DesktopVersion() {
           Check for updates on startup
         </label>
       )}
+      {d.getDesktopSettings && <DesktopOptions d={d} />}
       {d.installed && d.deleteApp &&
         <button className="btn danger small" onClick={() => d.deleteApp!()}>Delete Jace Social…</button>}
+    </div>
+  );
+}
+
+/** Desktop app: open on sign-in, and the shortcut for the game overlay. */
+function DesktopOptions({ d }: { d: DesktopBridge }) {
+  const [s, setS] = useState<{ startup: boolean | null; overlayShortcut: string; overlayError: string | null; shortcutsUnsupported: string | null } | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [msg, setMsg] = useState("");
+  const load = () => void d.getDesktopSettings!().then(setS);
+  useEffect(load, [d]);       // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      if (e.key === "Escape") { setRecording(false); return; }
+      if (["Control", "Shift", "Alt", "Meta", "AltGraph", "OS"].includes(e.key)) return;     // wait for the real key
+      const mods = [e.ctrlKey && "Ctrl", e.shiftKey && "Shift", e.altKey && "Alt", e.metaKey && "Meta"].filter(Boolean);
+      const key = e.code.startsWith("Key") ? e.code.slice(3) : e.code.startsWith("Digit") ? e.code.slice(5)
+        : /^F\d+$/.test(e.code) ? e.code : e.code === "Space" ? "Space" : e.code === "Backquote" ? "`" : e.code === "Tab" ? "Tab" : e.key;
+      setRecording(false);
+      if (!mods.length) { setMsg("Hold Ctrl, Shift, Alt or Meta too - like Ctrl+Shift+J"); return; }
+      void save([...mods, key].join("+"));
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [recording]);     // eslint-disable-line react-hooks/exhaustive-deps
+  async function save(combo: string) {
+    const r = await d.setOverlayShortcut!(combo);
+    setMsg(r.error ?? (combo ? `Press ${combo} in a game to open Jace Social on top of it` : "Overlay shortcut turned off"));
+    load();
+  }
+  if (!s) return null;
+  return (
+    <div style={{ display: "grid", gap: 6, paddingTop: 6 }}>
+      <label style={{ display: "flex", gap: 6, alignItems: "center", opacity: s.startup === null ? 0.6 : 1 }}
+        title={s.startup === null ? "Install Jace Social first (open the download and finish setup)" : undefined}>
+        <input type="checkbox" checked={!!s.startup} disabled={s.startup === null}
+          onChange={async (e) => { const r = await d.setStartup!(e.target.checked); if (r.error) setMsg(r.error); load(); }} />
+        Open Jace Social when I sign in to my computer
+      </label>
+      <span>Game overlay shortcut</span>
+      {s.shortcutsUnsupported ? <span>{s.shortcutsUnsupported}</span> : (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <button className={`btn small${recording ? " primary" : ""}`} onClick={() => { setMsg(""); setRecording(!recording); }}>
+            {recording ? "Press the keys… (Esc to cancel)" : s.overlayShortcut || "Set shortcut"}</button>
+          {s.overlayShortcut && !recording && <button className="btn small" onClick={() => void save("")}>Turn off</button>}
+        </div>
+      )}
+      {(msg || s.overlayError) && <span>{msg || s.overlayError}</span>}
     </div>
   );
 }

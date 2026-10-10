@@ -8,16 +8,17 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Property, Qt, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QAction, QDesktopServices, QIcon
+from PySide6.QtCore import QObject, Property, QRect, Qt, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QAction, QCursor, QDesktopServices, QGuiApplication, QIcon, QKeySequence, QShortcut
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import (QWebEngineDesktopMediaRequest, QWebEnginePage, QWebEnginePermission, QWebEngineProfile, QWebEngineScript,
                                       QWebEngineSettings)
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QApplication, QDialog, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout
+from PySide6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox, QPushButton,
+                               QSystemTrayIcon, QVBoxLayout, QWidget)
 
-from jace_social_app import APP_ID, APP_NAME, APP_VERSION, DATA_DIR, URL_SCHEME, desktop, macinstall, minecraft, updater, wininstall
+from jace_social_app import APP_ID, APP_NAME, APP_VERSION, DATA_DIR, URL_SCHEME, desktop, hotkeys, macinstall, minecraft, updater, wininstall
 from jace_social_app.installer import SetupWizard, confirm_uninstall, run_windows_update, update_app
 
 BASE = os.environ.get("JACE_SOCIAL_URL", "https://jace-social.vercel.app").rstrip("/")
@@ -47,6 +48,9 @@ BRIDGE_JS = """
       installed: b.installed,
       checkForUpdate: function () { return call("checkForUpdate"); },
       getAutoUpdateCheck: function () { return call("getAutoUpdateCheck"); },
+      getDesktopSettings: function () { return call("getDesktopSettings"); },
+      setStartup: function (on) { return call("setStartup", !!on); },
+      setOverlayShortcut: function (combo) { return call("setOverlayShortcut", String(combo || "")); },
       setAutoUpdateCheck: function (on) { b.setAutoUpdateCheck(!!on); },
       applyUpdate: function () { b.applyUpdate(); },
       deleteApp: function () { b.deleteApp(); },
@@ -184,6 +188,29 @@ class Bridge(QObject):
         self.window.check_for_update(lambda r: self.reply.emit(rid, json.dumps(r)))
 
     @Slot(int)
+    def getDesktopSettings(self, rid: int):
+        w = self.window
+        self.reply.emit(rid, json.dumps({
+            "startup": desktop.startup_enabled(),
+            "overlayShortcut": pref("overlay_shortcut", "") or "",
+            "overlayError": w.hotkey_error,
+            "shortcutsUnsupported": hotkeys.unsupported_reason(),
+        }))
+
+    @Slot(int, bool)
+    def setStartup(self, rid: int, on: bool):
+        try:
+            desktop.set_startup(on)
+            self.reply.emit(rid, json.dumps({"ok": True}))
+        except Exception as e:  # noqa: BLE001
+            self.reply.emit(rid, json.dumps({"error": str(e)}))
+
+    @Slot(int, str)
+    def setOverlayShortcut(self, rid: int, combo: str):
+        err = self.window.set_overlay_shortcut(combo.strip())
+        self.reply.emit(rid, json.dumps({"error": err} if err else {"ok": True}))
+
+    @Slot(int)
     def getAutoUpdateCheck(self, rid: int):
         self.reply.emit(rid, json.dumps(pref("auto_update_check", True) is not False))
 
@@ -291,6 +318,52 @@ class Page(QWebEnginePage):
         return page
 
 
+class Overlay(QWidget):
+    """Jace Social on top of your game: the overlay shortcut shows it, and again (or Esc / ✕)
+    hides it. It borrows the main window's page, so it's the same Jace Social: calls and voice
+    keep going. Works over windowed and borderless games (not exclusive fullscreen)."""
+    closed = Signal()
+
+    def __init__(self):
+        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setWindowTitle(f"{APP_NAME} overlay")
+        self.setWindowOpacity(0.97)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self.bar = QWidget()
+        self.bar.setFixedHeight(28)
+        self.bar.setStyleSheet("background: #111317; color: #8b919c;")
+        bar = QHBoxLayout(self.bar)
+        bar.setContentsMargins(10, 0, 2, 0)
+        bar.addWidget(QLabel(f"{APP_NAME} · drag to move · Esc to hide"), 1)
+        close = QPushButton("✕")
+        close.setFlat(True)
+        close.setFixedSize(26, 26)
+        close.setStyleSheet("color: #e6e8ec; border: 0;")
+        close.clicked.connect(self.hide)
+        bar.addWidget(close)
+        lay.addWidget(self.bar)
+        self.bar.installEventFilter(self)
+        self._drag = None
+        QShortcut(QKeySequence("Escape"), self, self.hide)
+
+    def eventFilter(self, obj, e):
+        from PySide6.QtCore import QEvent
+        if obj is self.bar:
+            if e.type() == QEvent.Type.MouseButtonPress:
+                self._drag = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            elif e.type() == QEvent.Type.MouseMove and self._drag is not None:
+                self.move(e.globalPosition().toPoint() - self._drag)
+            elif e.type() == QEvent.Type.MouseButtonRelease:
+                self._drag = None
+        return False
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self.closed.emit()
+
+
 class Window(QMainWindow):
     update_ready = Signal(dict, object)           # update check result, and what to do with it
 
@@ -344,7 +417,10 @@ class Window(QMainWindow):
             update.triggered.connect(lambda: self.check_for_update(self._update_dialog, fresh=True))
             quit_ = QAction("Quit", menu)
             quit_.triggered.connect(self.quit)
+            overlay = QAction("Show overlay", menu)
+            overlay.triggered.connect(lambda: QTimer.singleShot(0, self.toggle_overlay))
             menu.addAction(show)
+            menu.addAction(overlay)
             menu.addAction(update)
             menu.addSeparator()
             menu.addAction(quit_)
@@ -353,6 +429,15 @@ class Window(QMainWindow):
                                         if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
             self.tray.messageClicked.connect(self.bring_up)
             self.tray.show()
+
+        # the overlay and its shortcut (Settings -> Desktop app)
+        self.overlay: Overlay | None = None
+        self._main_was_visible = False
+        self.hotkey = hotkeys.HotKey(self)
+        self.hotkey.pressed.connect(self.toggle_overlay)
+        self.hotkey_error = None
+        if pref("overlay_shortcut"):
+            self.set_overlay_shortcut(pref("overlay_shortcut"), save=False)
 
         # like Jace Launcher: look for a new version right after starting (and every few hours
         # while the app stays open in the tray), and ask about each new version once
@@ -470,7 +555,62 @@ class Window(QMainWindow):
             self.view.setUrl(QUrl(f"{BASE}/invite/{parts[1]}"))
         self.bring_up()
 
+    # -- the overlay
+    def set_overlay_shortcut(self, combo: str, save=True) -> str | None:
+        """Listen for this shortcut ("" turns it off); returns why it can't."""
+        try:
+            self.hotkey.set(combo)
+            self.hotkey_error = None
+        except (ValueError, RuntimeError) as e:
+            self.hotkey_error = str(e)
+            return str(e)
+        except Exception as e:  # noqa: BLE001 - e.g. macOS without Accessibility permission
+            self.hotkey_error = f"Couldn't set the shortcut ({e})"
+            return self.hotkey_error
+        if save:
+            set_pref("overlay_shortcut", combo)
+        return None
+
+    def toggle_overlay(self):
+        if self.overlay and self.overlay.isVisible():
+            self.overlay.hide()
+            return
+        if self.overlay is None:
+            self.overlay = Overlay()
+            self.overlay.setWindowIcon(self.windowIcon())
+            self.overlay.closed.connect(self._overlay_closed)
+        self._main_was_visible = self.isVisible() and not self.isMinimized()
+        view = self.takeCentralWidget()                 # the same page moves into the overlay
+        self.overlay.layout().addWidget(view)
+        view.show()
+        geo = pref("overlay_geometry")
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        area = screen.availableGeometry()
+        if geo and len(geo) == 4 and area.intersects(QRect(*geo)):
+            self.overlay.setGeometry(*geo)
+        else:
+            w, h = 420, min(720, area.height() - 80)
+            self.overlay.setGeometry(area.right() - w - 24, area.top() + 40, w, h)
+        if self._main_was_visible:
+            self.hide()
+        self.overlay.show()
+        self.overlay.raise_()
+        self.overlay.activateWindow()
+
+    def _overlay_closed(self):
+        g = self.overlay.geometry()
+        set_pref("overlay_geometry", [g.x(), g.y(), g.width(), g.height()])
+        if self.centralWidget() is None:                # give the page back to the main window
+            self.overlay.layout().removeWidget(self.view)
+            self.setCentralWidget(self.view)
+            self.view.show()
+        if self._main_was_visible:
+            self._main_was_visible = False
+            self.show()
+
     def bring_up(self):
+        if self.overlay and self.overlay.isVisible():
+            self.overlay.hide()                         # the page goes back to the main window
         self.show()
         self.setWindowState((self.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
         self.raise_()
@@ -483,6 +623,7 @@ class Window(QMainWindow):
 
     def quit(self):
         self.quitting = True
+        self.hotkey.stop()
         QApplication.quit()
 
     def closeEvent(self, e):
@@ -535,6 +676,12 @@ def self_test(app) -> int:
     try:
         assert desktop.ICON_SRC.is_file(), f"missing icon {desktop.ICON_SRC}"
         assert _qwebchannel_js(), "qwebchannel.js missing"
+        # the overlay shortcut's library is bundled (it loads its platform's code by name)
+        if sys.platform.startswith("linux"):
+            from Xlib import XK, display  # noqa: F401
+            assert XK.string_to_keysym("F12"), "Xlib keysyms missing"
+        else:
+            from pynput import keyboard  # noqa: F401
         w = Window(url="about:blank")
         w.show()
         for _ in range(20):
