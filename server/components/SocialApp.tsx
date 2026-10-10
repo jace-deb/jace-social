@@ -684,14 +684,14 @@ function UpdateButton() {
       const r = await d.checkForUpdate();
       if (!stop) setLatest(r.newer && r.latest ? r.latest : null);
     };
-    const first = setTimeout(look, 20_000);          // the app checks GitHub ~15 s after starting
+    const first = setTimeout(look, 8_000);           // the app checks GitHub a few seconds after starting
     const t = setInterval(look, 3 * 3600_000);
     return () => { stop = true; clearTimeout(first); clearInterval(t); };
   }, []);
   if (!latest) return null;
   return (
     <button className="rail-item rail-update" title={`Update to Jace Social ${latest}`} aria-label={`Update to Jace Social ${latest}`}
-      onClick={() => desktop()?.applyUpdate?.()}>⬆</button>
+      onClick={() => desktop()?.applyUpdate?.()}>⬆<small>Update</small></button>
   );
 }
 

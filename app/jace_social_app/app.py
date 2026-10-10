@@ -46,6 +46,8 @@ BRIDGE_JS = """
       setUnread: function (n) { b.setUnread(Number(n) || 0); },
       installed: b.installed,
       checkForUpdate: function () { return call("checkForUpdate"); },
+      getAutoUpdateCheck: function () { return call("getAutoUpdateCheck"); },
+      setAutoUpdateCheck: function (on) { b.setAutoUpdateCheck(!!on); },
       applyUpdate: function () { b.applyUpdate(); },
       deleteApp: function () { b.deleteApp(); },
     };
@@ -53,6 +55,29 @@ BRIDGE_JS = """
   });
 })();
 """
+
+
+PREFS = DATA_DIR / "prefs.json"
+
+
+def pref(key: str, default=None):
+    try:
+        return json.loads(PREFS.read_text()).get(key, default)
+    except (OSError, ValueError):
+        return default
+
+
+def set_pref(key: str, value):
+    try:
+        data = json.loads(PREFS.read_text())
+    except (OSError, ValueError):
+        data = {}
+    data[key] = value
+    try:
+        PREFS.parent.mkdir(parents=True, exist_ok=True)
+        PREFS.write_text(json.dumps(data))
+    except OSError:
+        pass
 
 
 class MicrosoftLogin(QDialog):
@@ -157,6 +182,14 @@ class Bridge(QObject):
     @Slot(int)
     def checkForUpdate(self, rid: int):
         self.window.check_for_update(lambda r: self.reply.emit(rid, json.dumps(r)))
+
+    @Slot(int)
+    def getAutoUpdateCheck(self, rid: int):
+        self.reply.emit(rid, json.dumps(pref("auto_update_check", True) is not False))
+
+    @Slot(bool)
+    def setAutoUpdateCheck(self, on: bool):
+        set_pref("auto_update_check", bool(on))
 
     # these open dialogs, so let the page's call return first (see _microsoft)
     @Slot()
@@ -321,11 +354,17 @@ class Window(QMainWindow):
             self.tray.messageClicked.connect(self.bring_up)
             self.tray.show()
 
-        # look for a new version a little after starting, and tell once
+        # like Jace Launcher: look for a new version right after starting (and every few hours
+        # while the app stays open in the tray), and ask about each new version once
         self.update = None              # updater.check() result when a newer version is out
         self._checked = 0.0
+        self._ask_when_shown = False
         self.update_ready.connect(lambda r, cb: cb(r))
-        QTimer.singleShot(15_000, lambda: self.check_for_update(self._update_notice))
+        if pref("auto_update_check", True) is not False and not updater.unsupported_reason():
+            QTimer.singleShot(3_000, lambda: self.check_for_update(self._update_notice, fresh=True))
+            self._update_timer = QTimer(self, interval=3 * 3600_000)
+            self._update_timer.timeout.connect(lambda: self.check_for_update(self._update_notice, fresh=True))
+            self._update_timer.start()
 
     def check_for_update(self, done, fresh=False):
         """Ask GitHub off the UI thread (at most every 10 minutes unless fresh);
@@ -364,9 +403,34 @@ class Window(QMainWindow):
             self.quit()
 
     def _update_notice(self, r: dict):
-        if r.get("newer") and self.tray:
-            self.tray.showMessage(APP_NAME, f"{APP_NAME} {r['latest']} is out. Click Update in the app to get it.",
-                                  self.windowIcon(), 8000)
+        """A newer version turned up on its own (not from Settings): ask once per version."""
+        if not r.get("newer") or pref("asked_about") == r["latest"]:
+            return
+        if self.tray:
+            self.tray.showMessage(APP_NAME, f"{APP_NAME} {r['latest']} is out.", self.windowIcon(), 8000)
+        if self.isVisible() and not self.isMinimized():
+            self._ask_update()
+        else:
+            self._ask_when_shown = True                 # in the tray: ask when the window comes back
+
+    def _ask_update(self):
+        """Like Jace Launcher's: Update now / Later, with what's new."""
+        self._ask_when_shown = False
+        info = self.update
+        if not info:
+            return
+        set_pref("asked_about", info["version"])
+        box = QMessageBox(self)
+        box.setWindowTitle(f"Update {APP_NAME}")
+        box.setText(f"<b>Update to {APP_NAME} {info['version']}?</b><br>"
+                    f"You have {updater.current_version()}. The app restarts when the update is ready. You stay signed in.")
+        if info.get("notes"):
+            box.setDetailedText(info["notes"])
+        go = box.addButton("Update now", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        box.setWindowModality(Qt.WindowModality.WindowModal)
+        box.finished.connect(lambda _r: box.clickedButton() is go and QTimer.singleShot(0, self.apply_update))
+        box.open()
 
     def _update_dialog(self, r: dict):
         if r.get("error"):
@@ -411,6 +475,11 @@ class Window(QMainWindow):
         self.setWindowState((self.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
         self.raise_()
         self.activateWindow()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        if getattr(self, "_ask_when_shown", False):     # a new version turned up while the window was in the tray
+            QTimer.singleShot(800, self._ask_update)
 
     def quit(self):
         self.quitting = True

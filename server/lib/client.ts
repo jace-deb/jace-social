@@ -186,6 +186,9 @@ export type DesktopBridge = {
   /** True for a packaged (installed) build, which can update and delete itself. */
   installed?: boolean;
   checkForUpdate?(): Promise<UpdateCheck>;
+  /** "Check for updates on startup" (1.0.4+). */
+  getAutoUpdateCheck?(): Promise<boolean>;
+  setAutoUpdateCheck?(on: boolean): void;
   /** Downloads the new version, swaps it in and restarts the app. */
   applyUpdate?(): void;
   /** Asks, then uninstalls the desktop app. */

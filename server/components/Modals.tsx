@@ -347,7 +347,14 @@ export function AccountSwitcher({ me, compact }: { me: Me; compact?: boolean }) 
 function DesktopVersion() {
   const [d, setD] = useState<DesktopBridge | null>(null);
   const [state, setState] = useState<{ busy?: boolean; text?: string; latest?: string }>({});
-  useEffect(() => { void desktopReady().then((b) => { if (b?.checkForUpdate) setD(b); }); }, []);
+  const [auto, setAuto] = useState<boolean | null>(null);
+  useEffect(() => {
+    void desktopReady().then((b) => {
+      if (!b?.checkForUpdate) return;
+      setD(b);
+      void b.getAutoUpdateCheck?.().then(setAuto);
+    });
+  }, []);
   if (!d) return null;
   async function check() {
     setState({ busy: true });
@@ -361,6 +368,12 @@ function DesktopVersion() {
         ? <button className="btn primary small" onClick={() => d.applyUpdate!()}>Update to {state.latest}</button>
         : <button className="btn small" disabled={state.busy} onClick={check}>{state.busy ? "Checking…" : "Check for updates"}</button>}
       {state.text && <span>{state.text}</span>}
+      {auto !== null && (
+        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="checkbox" checked={auto} onChange={(e) => { setAuto(e.target.checked); d.setAutoUpdateCheck?.(e.target.checked); }} />
+          Check for updates on startup
+        </label>
+      )}
       {d.installed && d.deleteApp &&
         <button className="btn danger small" onClick={() => d.deleteApp!()}>Delete Jace Social…</button>}
     </div>

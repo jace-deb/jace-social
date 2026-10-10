@@ -1,5 +1,9 @@
 # Jace Social desktop app changelog
 
+## 1.0.4
+- **Updates like Jace Launcher:** the app checks for a new version a few seconds after it starts (and every few hours while it's open in the tray), then asks **Update now** or **Later** and shows what's new. It asks once per version; the green **Update** button stays in the sidebar until you update.
+- **Check for updates on startup** can be turned off in Settings, next to **Check for updates**.
+
 ## 1.0.3
 - Fixes "no permission" when turning on your camera in a call or voice channel.
 - Screen sharing works in the app: pick your whole screen or one window to share.
