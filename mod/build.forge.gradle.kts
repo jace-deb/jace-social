@@ -31,8 +31,15 @@ repositories {
 dependencies {
     // LuckPerms API: only used when LuckPerms is installed (the permissions menus)
     compileOnly("net.luckperms:api:5.4")
+    // mixins: the processor writes the refmap (Forge 1.20.1 renames methods at runtime)
+    annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
     // e4all (required at runtime: hosts worlds publicly); in the dev/test client only
     modRuntimeOnly("maven.modrinth:e4all:${sc.properties.get<String>("deps.e4all")}")
+}
+
+mixin {
+    add(sourceSets.main.get(), "jacefriends.refmap.json")
+    config("jacefriends.mixins.json")
 }
 
 legacyForge {
@@ -88,7 +95,10 @@ tasks {
         }
 
         val mixinJava = "JAVA_${requiredJava.majorVersion}"
-        filesMatching("*.mixins.json") { expand("java" to mixinJava) }
+        filesMatching("*.mixins.json") {
+            expand("java" to mixinJava)
+            filter { it.replace("\"required\"", "\"refmap\": \"jacefriends.refmap.json\",\n  \"required\"") }
+        }
 
         exclude("fabric.mod.json", "META-INF/neoforge.mods.toml")
     }

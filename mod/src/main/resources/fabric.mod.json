@@ -16,6 +16,7 @@
   "entrypoints": {
     "client": ["dev.jacedeb.jacefriends.JaceFriendsFabric"]
   },
+  "mixins": ["jacefriends.mixins.json"],
   "depends": {
     "fabricloader": ">=${loader}",
     "minecraft": "${minecraft}",

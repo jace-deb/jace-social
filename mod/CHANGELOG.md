@@ -1,5 +1,9 @@
 # Jace Social mod changelog
 
+## 1.5.1
+- **Normal permissions when you host:** with **Allow Commands** on, Minecraft gives everyone who joins your world commands. Now only you and players on the ops list get them, like on a server. Give a friend commands with **/op name** (or the Admin group in Host world → Permissions), take them away with **/deop name**.
+- **/op** and **/deop** work in worlds you host (Minecraft only has them on servers).
+
 ## 1.5.0
 - **Voice channels and group calls:** join a server's voice channel (**Servers** → open a server → **Join**) or a group chat's call (**Voice** next to the group). Everyone's in one call together, like in the Jace Social app.
 - **Camera and screen sharing:** in a call or a voice channel, **Camera** and **Share** send your camera or your screen to everyone else.

@@ -3,6 +3,9 @@ modLoader = "javafml"
 loaderVersion = "[1,)"
 issueTrackerURL = "https://github.com/jace-deb/jace-social/issues"
 
+[[mixins]]
+config = "jacefriends.mixins.json"
+
 [[mods]]
 modId = "${id}"
 displayName = "${name}"

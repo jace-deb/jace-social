@@ -32,6 +32,8 @@ public class JaceFriendsFabric implements ClientModInitializer {
 		});
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> JaceFriends.onPlayerJoin(handler.player));
 		ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> JaceFriends.stopping());
+		net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback.EVENT.register(
+				(dispatcher, registries, selection) -> JaceFriends.registerHostCommands(dispatcher, selection));
 		//? if >=26.1
 		FabricPermissions.register();
 	}

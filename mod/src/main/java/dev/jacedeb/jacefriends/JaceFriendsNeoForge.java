@@ -31,6 +31,8 @@ public class JaceFriendsNeoForge {
 		NeoForge.EVENT_BUS.addListener((ScreenEvent.Init.Post e) -> {
 			for (Button b : JaceFriends.screenButtons(e.getScreen(), e.getScreen().width, e.getScreen().height)) e.addListener(b);
 		});
+		NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.RegisterCommandsEvent e) ->
+				JaceFriends.registerHostCommands(e.getDispatcher(), e.getCommandSelection()));
 		NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent e) -> {
 			if (e.getEntity() instanceof net.minecraft.server.level.ServerPlayer p) JaceFriends.onPlayerJoin(p);
 		});

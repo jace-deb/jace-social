@@ -55,6 +55,7 @@ public final class JaceFriends {
 		if (!announced) {                   // one log line (on the first menu) so tests can see the mod is working
 			announced = true;
 			System.out.println("[Jace Social] " + VERSION + " ready on Minecraft " + Compat.mcVersion());
+			System.out.println("[Jace Social] LAN permissions (only ops get commands): " + (lanPermissionsActive() ? "on" : "NOT ACTIVE"));
 		}
 		//? if <26.2 {
 		/*if (menu) out.add(Button.builder(Component.literal("Friends"), b -> open(screen)).bounds(width - 86, 6, 80, 20).build());
@@ -79,6 +80,32 @@ public final class JaceFriends {
 	}
 
 	/** Someone joined the world we're hosting (server thread). */
+	/** Did mixin/LanCommandsMixin get applied? (Its method ends up in the game's class.) */
+	private static boolean lanPermissionsActive() {
+		try {
+			//? if >=26.3 {
+			Class<?> target = net.minecraft.client.server.IntegratedServer.class;
+			//?} else
+			/*Class<?> target = net.minecraft.server.players.PlayerList.class;*/
+			for (java.lang.reflect.Method m : target.getDeclaredMethods()) if (m.getName().contains("jacefriends$onlyOps")) return true;
+		} catch (Throwable ignored) {
+		}
+		return false;
+	}
+
+	/**
+	 * /op and /deop in worlds you host (vanilla only has them on servers), so you can give
+	 * friends commands the normal way. Players on the ops list get commands; others don't
+	 * (see mixin/LanCommandsMixin).
+	 */
+	static void registerHostCommands(com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack> dispatcher,
+									 net.minecraft.commands.Commands.CommandSelection selection) {
+		if (selection == net.minecraft.commands.Commands.CommandSelection.INTEGRATED) {
+			net.minecraft.server.commands.OpCommand.register(dispatcher);
+			net.minecraft.server.commands.DeOpCommands.register(dispatcher);
+		}
+	}
+
 	public static void onPlayerJoin(ServerPlayer player) {
 		IntegratedServer sp = Minecraft.getInstance().getSingleplayerServer();
 		if (sp != null && sp.isPublished()) Roles.apply(sp, player, true);
