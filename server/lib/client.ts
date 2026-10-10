@@ -208,6 +208,14 @@ export function inMobileApp(): boolean {
   return typeof navigator !== "undefined" && navigator.userAgent.includes("JaceSocialMobile/");
 }
 
+/** The phone app's version and platform (from its user agent), or null outside it. */
+export function mobileApp(): { version: string; platform: "android" | "ios" } | null {
+  if (typeof navigator === "undefined") return null;
+  const m = navigator.userAgent.match(/JaceSocialMobile\/(\d+\.\d+\.\d+)/);
+  if (!m) return null;
+  return { version: m[1], platform: /Android/.test(navigator.userAgent) ? "android" : "ios" };
+}
+
 /** A phone or tablet (in a browser or the app). */
 export function onPhone(): boolean {
   return typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/.test(navigator.userAgent);

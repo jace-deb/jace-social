@@ -1,4 +1,5 @@
 "use client";
+import { MobileVersion } from "./MobileUpdate";
 import { useEffect, useState } from "react";
 import { MinecraftDevice } from "./MinecraftDevice";
 import { MyBots } from "./Bots";
@@ -150,6 +151,7 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError, initia
           {onWelcome && !me.is_bot && <button className="side-item" onClick={onWelcome}>👋 Welcome tour</button>}
           <button className="side-item" style={{ color: "var(--red)" }} onClick={onSignOut}>Sign out</button>
           <DesktopVersion />
+          <MobileVersion />
         </nav>
         <div className="modal-body">
           {tab === "profile" && <>

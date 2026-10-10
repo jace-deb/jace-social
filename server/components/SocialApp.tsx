@@ -18,6 +18,7 @@ import { Chat } from "./Chat";
 import { LinkGuard } from "./Markdown";
 import { nameStyle } from "./Message";
 import { MinecraftDevice } from "./MinecraftDevice";
+import { MobileUpdate } from "./MobileUpdate";
 import { AccountSwitcher, AddServerModal, NewGroupModal, ProfileModal, SettingsModal, StatusEditor, type SettingsTab } from "./Modals";
 import { ServerOnboarding, Welcome } from "./Onboarding";
 import { inviteLink, ServerSettings } from "./ServerSettings";
@@ -408,6 +409,7 @@ function Main({ me, setMe, signOut, inviteCode }: {
         ))}
         <button className="rail-item rail-add" title="Create or join a server" onClick={() => setModal({ kind: "server" })}>+</button>
         <UpdateButton />
+        <MobileUpdate />
       </nav>
 
       {/* sidebar */}
