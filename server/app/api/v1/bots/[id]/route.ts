@@ -19,6 +19,7 @@ export const GET = handler(async (req, ctx) => {
   return {
     bot: b.bot_owner === p.uuid ? ownBot(b) : publicProfile(b), owner, commands, official: b.uuid === JACE_BOT,
     program: b.bot_owner === p.uuid ? b.bot_program ?? null : null,
+    code: b.bot_owner === p.uuid ? b.bot_code ?? null : null,
   };
 });
 

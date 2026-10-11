@@ -167,6 +167,11 @@ export async function postMessage(channel: Channel, members: string[], sender: P
   if (sender) {
     await db().from("channel_reads").upsert({ channel_id: channel.id, uuid: sender.uuid, last_read: data.id });
   }
+  if (sender?.is_bot) {     // every message a bot sends (hosted, block or through the API) goes in its activity log
+    const { logBot, short } = await import("./botlog");
+    await logBot(sender.uuid, "message", `Sent in ${channel.server_id ? "#" : ""}${channel.name ?? "a group chat"}: ${short(body, 300)}`,
+      { server_id: channel.server_id, channel_id: channel.id });
+  }
   const pinged = new Set(mentions.notify.filter((m) => m !== sender?.uuid));
   const payload = {
     channel_id: channel.id, server_id: channel.server_id, id: data.id,

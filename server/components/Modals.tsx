@@ -1,8 +1,9 @@
 "use client";
 import { MobileVersion } from "./MobileUpdate";
+import { has, P } from "@/lib/permbits";
 import { useEffect, useState } from "react";
 import { MinecraftDevice } from "./MinecraftDevice";
-import { MyBots } from "./Bots";
+import { BotActivity, MyBots } from "./Bots";
 import { addAnotherAccount, forgetAccount, savedAccounts, switchAccount } from "@/lib/accounts";
 import { ACCENTS, applySettings, THEME_NAMES } from "@/lib/theme";
 import {
@@ -24,6 +25,7 @@ export function ProfileModal({ uuid, onClose, onMessage, onChanged, onError, det
   detail?: ServerDetail | null; me?: Me;     // opened from a server: show their roles and what you can do
 }) {
   const [p, setP] = useState<FullProfile | null>(null);
+  const [activity, setActivity] = useState(false);
   useEffect(() => { api<FullProfile>(`/users/${uuid}`).then(setP).catch((e) => { onError(e.message); onClose(); }); }, [uuid]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p) return null;
   const accent = p.accent_color ?? "#2a4a37";
@@ -65,6 +67,12 @@ export function ProfileModal({ uuid, onClose, onMessage, onChanged, onError, det
           <div className="small muted">Servers you share: {p.mutual_servers.map((s) => s.name).join(", ")}</div>
         )}
       </div>
+      {p.is_bot && (p.bot_owner === me?.uuid || (detail && member && has(detail.perms, P.MANAGE_SERVER))) && (
+        <div className="modal-foot">
+          <button className="btn" onClick={() => setActivity(true)}>📜 See everything it does</button>
+        </div>
+      )}
+      {activity && <BotActivity bot={{ uuid: p.uuid, name: p.name }} server={p.bot_owner === me?.uuid ? undefined : detail?.server.id} onClose={() => setActivity(false)} />}
       {!p.is_you && !p.is_bot && (
         <div className="modal-foot">
           {p.is_friend ? <>

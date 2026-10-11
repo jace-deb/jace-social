@@ -1,10 +1,14 @@
-// Bots: accounts (profiles.is_bot) with an owner. Three kinds act in chats:
-//  - code bots use the API with their token and get live events like anyone, plus
-//    "command" events when someone uses one of their slash commands;
+// Bots: accounts (profiles.is_bot) with an owner. Four kinds act in chats:
+//  - API bots run anywhere and use the API with their token; they get live events like anyone,
+//    plus "command" events when someone uses one of their slash commands;
+//  - hosted code bots (JavaScript saved here) run in a sandbox by lib/codebots.ts;
 //  - block bots (made in the app's block editor) are run here by lib/blocks.ts;
 //  - the official Jace bot, built in below.
-// A bot never reacts to another bot, so they can't loop.
+// A bot never reacts to another bot, so they can't loop. Everything bots do goes in their
+// activity log (lib/botlog.ts).
 import { Runner, programCommands, type Env, type Handler, type Program } from "./blocks";
+import { logBot, short } from "./botlog";
+import { LIMITS as CODE_LIMITS, runCode, type CodeEvent } from "./codebots";
 import { channelFor, postMessage, profilesById, type Channel } from "./chat";
 import { has, P, serverCtx } from "./perms";
 import { ApiError, db, inboxesOf, notify, publicProfile, siteUrl, token, type Profile } from "./server";
@@ -50,6 +54,7 @@ async function botsAmong(uuids: string[]): Promise<Profile[]> {
 /** What a block bot can do while handling one event. */
 function envFor(bot: Profile, c: Ctx, text: string, args: Record<string, string>, components: unknown[]): Env {
   const serverId = c.channel.server_id;
+  const where = { server_id: serverId, channel_id: c.channel.id };
   let first = true;
   const say = async (channel: Channel, members: string[], body: string) => {
     const sc = serverId ? await serverCtx(serverId, bot.uuid).catch(() => null) : null;
@@ -81,6 +86,7 @@ function envFor(bot: Profile, c: Ctx, text: string, args: Record<string, string>
     },
     async react(emoji) {
       if (!c.message || !emoji.trim()) return;
+      await logBot(bot.uuid, "react", `Reacted ${emoji.trim()} to ${c.user.display_name || c.user.name}'s message`, where);
       await db().from("message_reactions").upsert({ scope: "c", message_id: Number(c.message.id), uuid: bot.uuid, emoji: emoji.trim() });
       await notify(await inboxesOf(c.members), "channel", { channel_id: c.channel.id, server_id: serverId, id: c.message.id, reacted: true });
     },
@@ -88,7 +94,11 @@ function envFor(bot: Profile, c: Ctx, text: string, args: Record<string, string>
       if (!serverId) return;
       const sc = await serverCtx(serverId, bot.uuid).catch(() => null);
       const role = sc?.roles.find((r) => !r.is_default && r.name.toLowerCase() === name.toLowerCase());
-      if (!sc || !role || !has(sc.base, P.MANAGE_ROLES) || role.position >= sc.top) return;   // bots follow role order too
+      if (!sc || !role || !has(sc.base, P.MANAGE_ROLES) || role.position >= sc.top) {     // bots follow role order too
+        await logBot(bot.uuid, "error", `Couldn't ${give ? "give" : "take"} the role "${name}": ${role ? "it's above the bot's own roles, or the bot can't manage roles" : "there's no such role"}`, where);
+        return;
+      }
+      await logBot(bot.uuid, "role", `${give ? "Gave" : "Took"} the role ${role.name} ${give ? "to" : "from"} ${c.user.display_name || c.user.name}`, where);
       if (give) await db().from("server_member_roles").upsert({ server_id: serverId, uuid: c.user.uuid, role_id: role.id });
       else await db().from("server_member_roles").delete().eq("server_id", serverId).eq("uuid", c.user.uuid).eq("role_id", role.id);
       await notify(await inboxesOf(c.members), "servers", { kind: "changed", server_id: serverId });
@@ -96,7 +106,11 @@ function envFor(bot: Profile, c: Ctx, text: string, args: Record<string, string>
     async deleteMessage() {
       if (!c.message || !serverId) return;
       const sc = await serverCtx(serverId, bot.uuid).catch(() => null);
-      if (!sc || !has(sc.base, P.MANAGE_MESSAGES)) return;
+      if (!sc || !has(sc.base, P.MANAGE_MESSAGES)) {
+        await logBot(bot.uuid, "error", "Couldn't delete a message: the bot can't manage messages here", where);
+        return;
+      }
+      await logBot(bot.uuid, "delete", `Deleted ${c.user.display_name || c.user.name}'s message: ${short(String(c.message.body ?? ""), 200)}`, where);
       await db().from("channel_messages").delete().eq("id", Number(c.message.id));
       await notify(await inboxesOf(c.members), "channel", { channel_id: c.channel.id, server_id: serverId, id: c.message.id, deleted: true });
     },
@@ -111,9 +125,63 @@ function envFor(bot: Profile, c: Ctx, text: string, args: Record<string, string>
 }
 
 async function runHandler(bot: Profile, h: Handler, c: Ctx, text: string, args: Record<string, string>, components: unknown[] = []) {
+  await logBot(bot.uuid, "event", describeEvent(h.event, c, text, h.command?.name), { server_id: c.channel.server_id, channel_id: c.channel.id });
   const env = envFor(bot, c, text, args, components) as Env & { _load?: Promise<void> };
   await env._load;
-  await new Runner(env).run(h.actions);
+  try {
+    await new Runner(env).run(h.actions);
+  } catch (e) {
+    await logBot(bot.uuid, "error", `Blocks stopped: ${(e as Error).message}`, { server_id: c.channel.server_id, channel_id: c.channel.id });
+    throw e;
+  }
+}
+
+function describeEvent(kind: string, c: Ctx, text: string, command?: string) {
+  const who = c.user.display_name || c.user.name;
+  const where = c.channel.server_id ? `#${c.channel.name}` : "a group chat";
+  if (kind === "command") return `${who} used /${command}${text ? " " + short(text, 150) : ""} in ${where}`;
+  if (kind === "join") return `${who} joined the server`;
+  return `${who} said in ${where}: ${short(text, 200)}`;
+}
+
+/** Run a hosted code bot for one event, then do what it asked (with its own permissions). */
+async function runCodeBot(bot: Profile, kind: CodeEvent["type"], c: Ctx, text: string, command?: { name: string; args: Record<string, string> },
+                          components: unknown[] = []) {
+  const where = { server_id: c.channel.server_id, channel_id: c.channel.id };
+  await logBot(bot.uuid, "event", describeEvent(kind, c, text, command?.name), where);
+  const env = envFor(bot, c, text, command?.args ?? {}, components) as Env & { _load?: Promise<void> };
+  await env._load;
+  const { data: saved } = await db().from("bot_storage").select("key, value").eq("bot", bot.uuid).eq("scope", env.scope).limit(CODE_LIMITS.keys);
+  const storage = Object.fromEntries((saved ?? []).map((r) => [r.key, r.value]));
+  const r = await runCode(String(bot.bot_code), {
+    type: kind, text, command,
+    author: { id: c.user.uuid, name: c.user.display_name || c.user.name },
+    channel: { id: c.channel.id, name: c.channel.name ?? "" },
+    server: env.server ? { id: env.server.id, name: env.server.name } : null,
+  }, storage);
+  for (const line of r.logs) await logBot(bot.uuid, "log", line, where);
+  if (r.error) await logBot(bot.uuid, "error", r.error, where);
+  for (const [key, value] of Object.entries(r.storage)) {
+    if (value === null) await db().from("bot_storage").delete().eq("bot", bot.uuid).eq("scope", env.scope).eq("key", key);
+    else await db().from("bot_storage").upsert({ bot: bot.uuid, scope: env.scope, key, value });
+    await logBot(bot.uuid, "storage", value === null ? `Forgot "${key}"` : `Saved "${key}" = ${short(JSON.stringify(value), 150)}`, where);
+  }
+  let messages = 0;
+  for (const a of r.actions) {
+    if ((a.t === "reply" || a.t === "send") && ++messages > CODE_LIMITS.messages) {
+      await logBot(bot.uuid, "error", `Only ${CODE_LIMITS.messages} messages per event; skipped the rest`, where);
+      break;
+    }
+    try {
+      if (a.t === "reply") await env.reply(a.text);
+      else if (a.t === "send") await env.send(a.channel, a.text);
+      else if (a.t === "react") await env.react(a.emoji);
+      else if (a.t === "give_role" || a.t === "take_role") await env.giveRole(a.role, a.t === "give_role");
+      else if (a.t === "delete_message") await env.deleteMessage();
+    } catch (e) {
+      await logBot(bot.uuid, "error", `${a.t} failed: ${(e as Error).message}`, where);
+    }
+  }
 }
 
 function matches(h: Handler, text: string) {
@@ -130,7 +198,12 @@ export async function onChannelMessage(channel: Channel, members: string[], send
   if (sender.is_bot) return;
   const text = String(message.body ?? "");
   for (const bot of await botsAmong(members)) {
-    if (!bot.bot_enabled || !bot.bot_program) continue;
+    if (!bot.bot_enabled) continue;
+    if (bot.bot_code) {
+      await runCodeBot(bot, "message", { channel, members, user: sender, message }, text).catch((e) => console.error("code bot", bot.uuid, e));
+      continue;
+    }
+    if (!bot.bot_program) continue;
     for (const h of (bot.bot_program as Program).handlers ?? []) {
       if (h.event === "message" && matches(h, text)) {
         await runHandler(bot, h, { channel, members, user: sender, message }, text, {}).catch((e) => console.error("block bot", bot.uuid, e));
@@ -142,13 +215,17 @@ export async function onChannelMessage(channel: Channel, members: string[], send
 /** Someone joined a server: block bots' "when someone joins" run in the system channel. */
 export async function onMemberJoin(serverId: string, who: Profile) {
   const { data: members } = await db().from("server_members").select("uuid").eq("server_id", serverId);
-  const bots = (await botsAmong((members ?? []).map((m) => m.uuid))).filter((b) => b.bot_enabled && b.bot_program);
+  const bots = (await botsAmong((members ?? []).map((m) => m.uuid))).filter((b) => b.bot_enabled && (b.bot_program || b.bot_code));
   if (!bots.length) return;
   const { data: s } = await db().from("servers").select("system_channel").eq("id", serverId).single();
   if (!s?.system_channel) return;
   for (const bot of bots) {
     const target = await channelFor(s.system_channel, bot.uuid).catch(() => null);
     if (!target) continue;
+    if (bot.bot_code) {
+      await runCodeBot(bot, "join", { channel: target.channel, members: target.members, user: who }, "").catch(() => {});
+      continue;
+    }
     for (const h of (bot.bot_program as Program).handlers ?? []) {
       if (h.event === "join") await runHandler(bot, h, { channel: target.channel, members: target.members, user: who }, "", {}).catch(() => {});
     }
@@ -174,9 +251,11 @@ export async function runCommand(c: Ctx, botId: string, name: string, args: Reco
   const used = [{ type: "command", user: c.user.uuid, name }];
   const text = Object.values(args).join(" ");
   if (bot.uuid === JACE_BOT) return jaceCommand(bot, c, name, args, used);
+  if (bot.bot_code && bot.bot_enabled) return runCodeBot(bot, "command", c, text, { name, args }, used);
   const h = ((bot.bot_program as Program)?.handlers ?? []).find((x) => x.event === "command" && x.command?.name === name);
   if (h && bot.bot_enabled) return runHandler(bot, h, c, text, args, used);
-  // a code bot: tell it, it answers through the API
+  // an API bot: tell it, it answers through the API
+  await logBot(bot.uuid, "command", describeEvent("command", c, text, name), { server_id: c.channel.server_id, channel_id: c.channel.id });
   await notify([bot.inbox], "command", {
     channel_id: c.channel.id, server_id: c.channel.server_id, user: c.user.uuid,
     user_name: c.user.display_name || c.user.name, name, args,
@@ -258,7 +337,7 @@ async function jaceCommand(bot: Profile, c: Ctx, name: string, args: Record<stri
 export function ownBot(b: Profile) {
   return {
     ...publicProfile(b), bot_public: !!b.bot_public, bot_enabled: b.bot_enabled !== false,
-    bot_commands: b.bot_commands ?? [], has_program: !!b.bot_program,
+    bot_commands: b.bot_commands ?? [], has_program: !!b.bot_program, has_code: !!b.bot_code,
   };
 }
 

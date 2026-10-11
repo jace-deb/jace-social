@@ -1,13 +1,14 @@
 "use client";
-// Settings -> My bots: make bots, get their token, switch to them, and build them with
-// blocks (the Scratch-style editor below).
+// Settings -> My bots: make bots, get their token, switch to them, build them with blocks
+// (the Scratch-style editor below) or write them in JavaScript (run on Jace Social's server),
+// and see everything a bot did (its activity log).
 import { useEffect, useRef, useState } from "react";
 import { api, type Person } from "@/lib/client";
 import { rememberAccount, switchAccount } from "@/lib/accounts";
 import { compile, darkTheme, defineBlocks, STARTER, TOOLBOX } from "@/lib/botblocks";
-import { Avatar } from "./ui";
+import { Avatar, Modal } from "./ui";
 
-type Bot = Person & { bot_public: boolean; bot_enabled: boolean; has_program: boolean };
+type Bot = Person & { bot_public: boolean; bot_enabled: boolean; has_program: boolean; has_code?: boolean };
 type Err = (m: string) => void;
 
 export function MyBots({ onError }: { onError: Err }) {
@@ -15,6 +16,8 @@ export function MyBots({ onError }: { onError: Err }) {
   const [name, setName] = useState("");
   const [token, setToken] = useState<{ bot: string; token: string } | null>(null);
   const [editing, setEditing] = useState<Bot | null>(null);
+  const [coding, setCoding] = useState<Bot | null>(null);
+  const [activity, setActivity] = useState<Bot | null>(null);
   const load = () => api<{ bots: Bot[] }>("/bots").then((d) => setBots(d.bots)).catch((e) => onError(e.message));
   useEffect(() => { void load(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -29,10 +32,12 @@ export function MyBots({ onError }: { onError: Err }) {
   }
 
   if (editing) return <BotEditor bot={editing} onClose={() => { setEditing(null); void load(); }} onError={onError} />;
+  if (coding) return <CodeEditor bot={coding} onClose={() => { setCoding(null); void load(); }} onError={onError} />;
   return <>
     <h2>My bots</h2>
     <p className="muted small" style={{ margin: 0 }}>
-      Bots are accounts you own. Build one with blocks (no code), or program it with its token and the Jace Social API.
+      Bots are accounts you own. Build one with blocks (no code), write its code here and Jace Social runs it for you,
+      or program it anywhere with its token and the Jace Social API.
       You can also switch to a bot and chat as it.</p>
     <form style={{ display: "flex", gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (name.trim()) void create(); }}>
       <input placeholder="New bot's name" value={name} maxLength={32} onChange={(e) => setName(e.target.value)} />
@@ -61,12 +66,14 @@ export function MyBots({ onError }: { onError: Err }) {
           </label>
           <div className="grow">
             <b>{b.name}</b> <span className="bot-tag">BOT</span>
-            <div className="muted small">{b.has_program ? "Made with blocks" : "No blocks yet"} · {b.bot_public ? "Anyone can add it" : "Only you can add it"}</div>
+            <div className="muted small">{b.has_code ? "Runs its code on Jace Social" : b.has_program ? "Made with blocks" : "Uses the API (or nothing yet)"} · {b.bot_public ? "Anyone can add it" : "Only you can add it"}</div>
           </div>
         </div>
         <textarea rows={2} defaultValue={b.bio ?? ""} maxLength={300} placeholder="What does it do?" onBlur={(e) => { if (e.target.value !== (b.bio ?? "")) void patch(b, { bio: e.target.value }); }} />
         <div className="bot-buttons">
-          <button className="btn small primary" onClick={() => setEditing(b)}>🧩 Edit blocks</button>
+          <button className={`btn small${b.has_code ? "" : " primary"}`} onClick={() => setEditing(b)}>🧩 Edit blocks</button>
+          <button className={`btn small${b.has_code ? " primary" : ""}`} onClick={() => setCoding(b)}>💻 {b.has_code ? "Edit code" : "Write code"}</button>
+          <button className="btn small" onClick={() => setActivity(b)}>📜 Activity</button>
           <button className="btn small" onClick={async () => {
             try {
               const s = await api<{ token: string; uuid: string; name: string; avatar_url: string | null }>(`/bots/${b.uuid}/session`, { body: {} });
@@ -87,8 +94,9 @@ export function MyBots({ onError }: { onError: Err }) {
         </div>
       </div>
     ))}
+    {activity && <BotActivity bot={activity} onClose={() => setActivity(null)} />}
     <details className="card">
-      <summary><b>Programming a bot with code</b></summary>
+      <summary><b>Programming a bot with the API (run it yourself)</b></summary>
       <div className="small" style={{ display: "grid", gap: 6, marginTop: 8 }}>
         <span>Send requests to <code className="inline-code">{typeof location !== "undefined" ? location.origin : ""}/api/v1</code> with the header
           <code className="inline-code">Authorization: Bearer &lt;bot token&gt;</code>. The bot uses the same API as the app: read and send messages in
@@ -164,5 +172,176 @@ function BotEditor({ bot, onClose, onError }: { bot: Bot; onClose: () => void; o
       </div>
       <div ref={div} className="blockly-area" />
     </div>
+  );
+}
+
+/** Write a bot in JavaScript; Jace Social runs it (in a sandbox) when something happens. */
+function CodeEditor({ bot, onClose, onError }: { bot: Bot; onClose: () => void; onError: Err }) {
+  const [code, setCode] = useState<string | null>(null);
+  const [saved, setSaved] = useState("");
+  const [status, setStatus] = useState("");
+  const [tryText, setTryText] = useState("hi bot");
+  const [result, setResult] = useState<{ actions: { t: string; text?: string; channel?: string; emoji?: string; role?: string }[];
+    logs: string[]; storage: Record<string, unknown>; commands: { name: string }[]; error?: string } | null>(null);
+  useEffect(() => {
+    api<{ code: string | null }>(`/bots/${bot.uuid}`).then((d) => { setCode(d.code ?? STARTER_CODE); setSaved(d.code ?? ""); })
+      .catch((e) => { onError(e.message); setCode(STARTER_CODE); });
+  }, [bot.uuid]);   // eslint-disable-line react-hooks/exhaustive-deps
+  if (code === null) return <p className="muted">Loading…</p>;
+  const dirty = code !== saved;
+  async function save() {
+    try {
+      const r = await api<{ commands: { name: string }[] }>(`/bots/${bot.uuid}/code`, { method: "PUT", body: { code } });
+      setSaved(code!);
+      setStatus(`Saved ✓${r.commands.length ? ` Commands: ${r.commands.map((c) => "/" + c.name).join(", ")}.` : ""} Add ${bot.name} to a server or group to try it.`);
+    } catch (e) { setStatus(`⚠ ${(e as Error).message}`); }
+  }
+  async function tryIt() {
+    const cmd = tryText.trim().startsWith("/") ? tryText.trim().slice(1).split(/\s+/) : null;
+    try {
+      const r = await api<{ result: NonNullable<typeof result> }>(`/bots/${bot.uuid}/code`, { body: {
+        code, text: cmd ? cmd.slice(1).join(" ") : tryText, command: cmd ? { name: cmd[0], args: { text: cmd.slice(1).join(" ") } } : undefined } });
+      setResult(r.result);
+    } catch (e) { setStatus(`⚠ ${(e as Error).message}`); }
+  }
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div className="bot-editor-bar">
+        <button className="btn small" onClick={() => { if (!dirty || confirm("Leave without saving?")) onClose(); }}>← Back</button>
+        <Avatar p={bot} size={28} /><b>{bot.name}</b>
+        <span className="grow muted small">{status}</span>
+        {saved && <button className="btn small danger" onClick={async () => {
+          if (!confirm("Remove this code? The bot stops running it.")) return;
+          try { await api(`/bots/${bot.uuid}/code`, { method: "PUT", body: { code: null } }); setSaved(""); setStatus("Code removed"); } catch (e) { onError((e as Error).message); }
+        }}>Remove code</button>}
+        <button className="btn primary small" disabled={!dirty} onClick={save}>{dirty ? "Save" : "Saved"}</button>
+      </div>
+      <textarea className="code-editor" spellCheck={false} value={code} rows={22}
+        onChange={(e) => setCode(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Tab") {           // tab indents instead of leaving the box
+            e.preventDefault();
+            const t = e.currentTarget, at = t.selectionStart;
+            setCode(code.slice(0, at) + "  " + code.slice(t.selectionEnd));
+            requestAnimationFrame(() => { t.selectionStart = t.selectionEnd = at + 2; });
+          } else if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); void save(); }
+        }} />
+      <div className="card" style={{ display: "grid", gap: 6 }}>
+        <b>Try it</b>
+        <div className="muted small">Runs the code above for a pretend message (or a /command) without saving or sending anything.</div>
+        <form style={{ display: "flex", gap: 8 }} onSubmit={(e) => { e.preventDefault(); void tryIt(); }}>
+          <input value={tryText} onChange={(e) => setTryText(e.target.value)} placeholder="A message, or /command" />
+          <button className="btn">Run</button>
+        </form>
+        {result && (
+          <div className="small" style={{ display: "grid", gap: 4 }}>
+            {result.error && <div className="error">⚠ {result.error}</div>}
+            {result.actions.length === 0 && !result.error && <div className="muted">It wouldn't do anything.</div>}
+            {result.actions.map((a, i) => <div key={i}>{describeAction(a)}</div>)}
+            {Object.entries(result.storage).map(([k, v]) => <div key={k}>💾 {v === null ? `Forget "${k}"` : `Save "${k}" = ${JSON.stringify(v)}`}</div>)}
+            {result.logs.map((l, i) => <div key={i} className="muted">› {l}</div>)}
+          </div>
+        )}
+      </div>
+      <details className="card">
+        <summary><b>What your code can use</b></summary>
+        <pre className="update-notes" style={{ marginTop: 8 }}>{CODE_HELP}</pre>
+      </details>
+    </div>
+  );
+}
+
+function describeAction(a: { t: string; text?: string; channel?: string; emoji?: string; role?: string }) {
+  switch (a.t) {
+    case "reply": return `💬 Reply: ${a.text}`;
+    case "send": return `💬 Send in #${a.channel}: ${a.text}`;
+    case "react": return `😀 React with ${a.emoji}`;
+    case "give_role": return `🏷️ Give the role ${a.role}`;
+    case "take_role": return `🏷️ Take the role ${a.role}`;
+    case "delete_message": return "🗑️ Delete the message";
+    default: return a.t;
+  }
+}
+
+const STARTER_CODE = `// This runs on Jace Social's server whenever something happens where your bot is.
+// It can reply, send messages, react, give roles and remember things (storage).
+
+bot.on("message", (msg) => {
+  if (msg.text.toLowerCase() === "hi bot") msg.reply("Hi " + msg.author.name + "! 👋");
+});
+
+bot.command("count", "Count up by one", (cmd) => {
+  const n = (storage.get("count") || 0) + 1;
+  storage.set("count", n);
+  cmd.reply("The count is now " + n);
+});
+
+bot.on("join", (member) => {
+  member.reply("Welcome, " + member.author.name + "!");
+});
+`;
+
+const CODE_HELP = `bot.on("message", (msg) => { ... })     someone wrote in a chat the bot is in
+bot.on("join", (member) => { ... })      someone joined the server (runs in its welcome channel)
+bot.command("name", "What it does", [{ name: "option", description: "...", required: true }], (cmd, args) => { ... })
+                                          a slash command; args.option is what they typed
+
+msg / cmd / member have:
+  .text  .author.id  .author.name  .channel.id  .channel.name  .server (null in a group chat)
+  .reply(text)  .react("👍")  .delete()  .giveRole("Role name")  .takeRole("Role name")
+bot.send("channel-name", text)            send in another channel of the server
+storage.get(key)  storage.set(key, value)  storage.delete(key)  storage.keys()
+                                          remembered per server (up to 100 values, 32 KB)
+console.log(...)                          shows in the bot's Activity
+
+Limits per event: 300 ms of work, 5 messages, 32 MB of memory. No internet access, files or timers.
+Everything the bot does is in its Activity, which you (and the admins of servers it's in) can see.`;
+
+const KIND_ICONS: Record<string, string> = {
+  event: "📥", message: "💬", react: "😀", role: "🏷️", delete: "🗑️", storage: "💾", log: "›", error: "⚠️", command: "⌨️",
+};
+
+/** Everything a bot did, newest first. Owner: all of it; a server's admins: what it did there. */
+export function BotActivity({ bot, server, onClose }: { bot: { uuid: string; name: string }; server?: string; onClose: () => void }) {
+  type Entry = { id: number; at: string; server_id: string | null; channel_id: string | null; kind: string; detail: string };
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [names, setNames] = useState<{ channels: Record<string, string>; servers: Record<string, string> }>({ channels: {}, servers: {} });
+  const [more, setMore] = useState(true);
+  const [error, setError] = useState("");
+  async function load(before?: number) {
+    try {
+      const q = new URLSearchParams();
+      if (server) q.set("server", server);
+      if (before) q.set("before", String(before));
+      const r = await api<{ entries: Entry[]; channels: Record<string, string>; servers: Record<string, string> }>(`/bots/${bot.uuid}/activity?${q}`);
+      setEntries((e) => before ? [...e, ...r.entries] : r.entries);
+      setNames((n) => ({ channels: { ...n.channels, ...r.channels }, servers: { ...n.servers, ...r.servers } }));
+      setMore(r.entries.length === 100);
+    } catch (e) { setError((e as Error).message); }
+  }
+  useEffect(() => { void load(); }, [bot.uuid, server]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Modal onClose={onClose}>
+      <div className="modal-body">
+        <h2 style={{ margin: 0 }}>📜 What {bot.name} did</h2>
+        <div className="muted small">{server ? "In this server, " : ""}newest first. Kept for 14 days.</div>
+        {error && <div className="error">{error}</div>}
+        {!error && entries.length === 0 && <div className="muted">Nothing yet.</div>}
+        <div className="bot-activity">
+          {entries.map((e) => (
+            <div key={e.id} className={`bot-activity-row ${e.kind}`}>
+              <span title={e.kind}>{KIND_ICONS[e.kind] ?? "•"}</span>
+              <div>
+                <div>{e.detail}</div>
+                <div className="muted small">{new Date(e.at).toLocaleString()}
+                  {e.server_id && !server && names.servers[e.server_id] ? ` · ${names.servers[e.server_id]}` : ""}
+                  {e.channel_id && names.channels[e.channel_id] ? ` · #${names.channels[e.channel_id]}` : ""}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {more && entries.length > 0 && <button className="btn small" onClick={() => void load(entries[entries.length - 1].id)}>Show older</button>}
+      </div>
+    </Modal>
   );
 }

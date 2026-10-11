@@ -32,7 +32,7 @@ export type Profile = {
   display_name?: string | null; avatar_url?: string | null; bio?: string | null; pronouns?: string | null;
   accent_color?: string | null; links?: { label: string; url: string }[];
   status?: Status; custom_status?: string | null; status_emoji?: string | null;
-  is_bot?: boolean; bot_owner?: string | null; bot_public?: boolean; bot_commands?: unknown[]; bot_program?: unknown;
+  is_bot?: boolean; bot_owner?: string | null; bot_public?: boolean; bot_commands?: unknown[]; bot_program?: unknown; bot_code?: string | null;
   bot_enabled?: boolean; banner_url?: string | null; settings?: Record<string, unknown>; onboarded_at?: string | null;
 };
 export type Status = "online" | "idle" | "dnd" | "invisible";

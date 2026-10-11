@@ -35,6 +35,11 @@ async function react(req: Request, on: boolean) {
     const set = new Set((kinds ?? []).map((k) => k.emoji));
     if (!set.has(emoji) && set.size >= MAX_KINDS) throw new ApiError(400, `Up to ${MAX_KINDS} different reactions per message`);
     await db().from("message_reactions").upsert({ scope: b.scope, message_id: id, uuid: p.uuid, emoji });
+    if (p.is_bot) {           // API bots' reactions go in their activity log too
+      const { logBot } = await import("@/lib/botlog");
+      const where = t.payload as { server_id?: string | null; channel_id?: string };
+      await logBot(p.uuid, "react", `Reacted ${emoji} to a message`, { server_id: where.server_id ?? null, channel_id: where.channel_id ?? null });
+    }
   } else {
     await db().from("message_reactions").delete().eq("scope", b.scope!).eq("message_id", id).eq("uuid", p.uuid).eq("emoji", emoji);
   }
