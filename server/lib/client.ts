@@ -196,6 +196,8 @@ export type DesktopBridge = {
   setAutoUpdateCheck?(on: boolean): void;
   /** Downloads the new version, swaps it in and restarts the app. */
   applyUpdate?(): void;
+  /** Quit the desktop app (closing the window keeps it running in the background). 1.0.10+ */
+  quit?(): void;
   /** Asks, then uninstalls the desktop app. */
   deleteApp?(): void;
 };

@@ -385,6 +385,8 @@ function DesktopVersion() {
         </label>
       )}
       {d.getDesktopSettings && <DesktopOptions d={d} />}
+      {d.quit && <button className="btn small" style={{ justifySelf: "start" }} onClick={() => d.quit!()}
+        title="Closing the window keeps Jace Social running so messages still reach you">Quit Jace Social (Ctrl+Q)</button>}
       {d.installed && d.deleteApp &&
         <button className="btn danger small" onClick={() => d.deleteApp!()}>Delete Jace Social…</button>}
     </div>

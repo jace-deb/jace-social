@@ -54,11 +54,28 @@ BRIDGE_JS = """
       setAutoUpdateCheck: function (on) { b.setAutoUpdateCheck(!!on); },
       applyUpdate: function () { b.applyUpdate(); },
       deleteApp: function () { b.deleteApp(); },
+      quit: function () { b.quitApp(); },
     };
     window.dispatchEvent(new Event("jacedesktop"));
   });
 })();
 """
+
+
+def desktop_notification(title: str, body: str):
+    """A notification through the freedesktop notification service (Linux without a tray icon)."""
+    def send():
+        try:
+            from jeepney import DBusAddress, new_method_call
+            from jeepney.io.blocking import open_dbus_connection
+            with open_dbus_connection(bus="SESSION") as conn:
+                notifications = DBusAddress("/org/freedesktop/Notifications", bus_name="org.freedesktop.Notifications",
+                                            interface="org.freedesktop.Notifications")
+                conn.send_and_get_reply(new_method_call(notifications, "Notify", "susssasa{sv}i", (
+                    APP_NAME, 0, APP_ID, title, body[:300], [], {"desktop-entry": ("s", APP_ID)}, 6000)), timeout=5)
+        except Exception:  # noqa: BLE001 - no notification service: nothing to show
+            pass
+    threading.Thread(target=send, daemon=True).start()
 
 
 PREFS = DATA_DIR / "prefs.json"
@@ -237,6 +254,10 @@ class Bridge(QObject):
     @Slot()
     def applyUpdate(self):
         QTimer.singleShot(0, self.window.apply_update)
+
+    @Slot()
+    def quitApp(self):
+        QTimer.singleShot(0, self.window.quit)
 
     @Slot()
     def deleteApp(self):
@@ -423,6 +444,8 @@ class Window(QMainWindow):
         # F5 / Ctrl+R (Cmd+R): load the newest Jace Social (the app stays open for days)
         for keys in (QKeySequence.StandardKey.Refresh, QKeySequence("Ctrl+R")):
             QShortcut(keys, self, self.view.reload)
+        QShortcut(QKeySequence.StandardKey.Quit, self, self.quit)          # Ctrl+Q / Cmd+Q
+        QShortcut(QKeySequence("Ctrl+Q"), self, self.quit)
 
         self.tray = None
         if QSystemTrayIcon.isSystemTrayAvailable():
@@ -559,8 +582,11 @@ class Window(QMainWindow):
                               QUrl(BASE + "/"))
 
     def notify(self, title: str, body: str):
-        if self.tray and not self.isActiveWindow():
-            self.tray.showMessage(title, body, self.windowIcon(), 6000)
+        if not self.isActiveWindow():
+            if self.tray:
+                self.tray.showMessage(title, body, self.windowIcon(), 6000)
+            elif sys.platform.startswith("linux"):
+                desktop_notification(title, body)       # no tray (GNOME): the desktop's own notifications
         QApplication.alert(self)
 
     def set_unread(self, n: int):
@@ -669,14 +695,20 @@ class Window(QMainWindow):
         QApplication.quit()
 
     def closeEvent(self, e):
-        # keep running in the tray (like Discord), so messages still pop up
-        if self.tray and not self.quitting:
+        # keep running in the background (like Discord), so messages still pop up: in the tray,
+        # or without one (GNOME has none) just hidden - opening Jace Social again shows it.
+        # The page stays as it is (deleting it here left a white window when it came back).
+        if not self.quitting:
             e.ignore()
             self.hide()
             if not getattr(self, "_told", False):
                 self._told = True
-                self.tray.showMessage(APP_NAME, "Still running here. Right-click the icon to quit.",
-                                      self.windowIcon(), 4000)
+                if self.tray:
+                    self.tray.showMessage(APP_NAME, "Still running here. Right-click the icon to quit.",
+                                          self.windowIcon(), 4000)
+                else:
+                    self.notify(APP_NAME, "Still running in the background, so messages reach you. "
+                                          "Quit with Ctrl+Q or in Settings.")
             return
         self.view.setPage(None)
         self.page.deleteLater()

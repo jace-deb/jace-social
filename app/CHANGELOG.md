@@ -1,5 +1,10 @@
 # Jace Social desktop app changelog
 
+## 1.0.10
+- Fixes an all-white window when you open Jace Social again after closing it, on desktops without a tray icon (like GNOME). Closing the window now keeps Jace Social running in the background there too, so messages still reach you; opening it again brings it back as it was.
+- Notifications now show on desktops without a tray icon (GNOME), as normal desktop notifications.
+- **Quit:** press Ctrl+Q (Cmd+Q on a Mac), or use **Quit Jace Social** in Settings.
+
 ## 1.0.9
 - **Game overlay on Wayland** (GNOME 48+, KDE, e.g. CachyOS): the overlay shortcut now works there too. The first time, your desktop asks you to allow the shortcut (you can pick other keys in its dialog; Settings shows which ones it uses). Then the shortcut opens Jace Social in front of whatever you're doing, games included.
 
