@@ -34,7 +34,7 @@ def hotkey_imports() -> list[str]:
     """The overlay shortcut's libraries (see jace_social_app/hotkeys.py): both load their
     platform's code by name at runtime, so PyInstaller doesn't see it."""
     if sys.platform.startswith("linux"):
-        return ["--collect-submodules", "Xlib"]
+        return ["--collect-submodules", "Xlib", "--collect-submodules", "jeepney"]   # X11, and Wayland's portal
     if sys.platform == "darwin":
         return []                                   # the system's own hotkeys, through ctypes
     return [arg for mod in ("pynput.keyboard._win32", "pynput.mouse._win32", "pynput._util.win32")

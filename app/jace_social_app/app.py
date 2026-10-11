@@ -64,6 +64,18 @@ BRIDGE_JS = """
 PREFS = DATA_DIR / "prefs.json"
 
 
+def pretty_trigger(description: str) -> str:
+    """The portal's "Press <Shift><Control>j" as "Ctrl+Shift+J"."""
+    import re
+    d = description.removeprefix("Press ").strip()
+    mods = re.findall(r"<(\w+)>", d)
+    key = re.sub(r"<\w+>", "", d).strip()
+    names = {"Control": "Ctrl", "Primary": "Ctrl", "Shift": "Shift", "Alt": "Alt", "Super": "Super", "Meta": "Meta"}
+    order = ["Ctrl", "Shift", "Alt", "Super", "Meta"]
+    parts = sorted({names.get(m, m) for m in mods}, key=lambda m: order.index(m) if m in order else 9)
+    return "+".join(parts + [key.upper() if len(key) == 1 else key]) if key else d
+
+
 def pref(key: str, default=None):
     try:
         return json.loads(PREFS.read_text()).get(key, default)
@@ -194,6 +206,8 @@ class Bridge(QObject):
             "startup": desktop.startup_enabled(),
             "overlayShortcut": pref("overlay_shortcut", "") or "",
             "overlayError": w.hotkey_error,
+            # Wayland: the keys the desktop actually uses (you can pick others in its dialog)
+            "overlayBoundAs": pretty_trigger(pref("overlay_bound_as", "")) if hotkeys.on_wayland() else None,
             "shortcutsUnsupported": hotkeys.unsupported_reason(),
         }))
 
@@ -208,7 +222,8 @@ class Bridge(QObject):
     @Slot(int, str)
     def setOverlayShortcut(self, rid: int, combo: str):
         err = self.window.set_overlay_shortcut(combo.strip())
-        self.reply.emit(rid, json.dumps({"error": err} if err else {"ok": True}))
+        note = "Your desktop will ask you to allow it" if combo.strip() and hotkeys.on_wayland() and not err else None
+        self.reply.emit(rid, json.dumps({"error": err} if err else {"ok": True, "note": note}))
 
     @Slot(int)
     def getAutoUpdateCheck(self, rid: int):
@@ -441,6 +456,8 @@ class Window(QMainWindow):
         self._main_was_visible = False
         self.hotkey = hotkeys.HotKey(self)
         self.hotkey.pressed.connect(self.toggle_overlay)
+        self.hotkey.failed.connect(self._shortcut_failed)
+        self.hotkey.bound.connect(self._shortcut_bound)
         self.hotkey_error = None
         if pref("overlay_shortcut"):
             self.set_overlay_shortcut(pref("overlay_shortcut"), save=False)
@@ -577,10 +594,29 @@ class Window(QMainWindow):
             set_pref("overlay_shortcut", combo)
         return None
 
-    def toggle_overlay(self):
+    def _shortcut_failed(self, why: str):
+        self.hotkey_error = why
+        if self.tray:
+            self.tray.showMessage(APP_NAME, f"Overlay shortcut: {why}", self.windowIcon(), 6000)
+
+    def _shortcut_bound(self, description: str):
+        self.hotkey_error = None
+        set_pref("overlay_bound", pref("overlay_shortcut", ""))
+        if description:
+            set_pref("overlay_bound_as", description)
+
+    def toggle_overlay(self, activation_token: str = ""):
         if self.overlay and self.overlay.isVisible():
             self.overlay.hide()
             return
+        if hotkeys.on_wayland():
+            # Wayland only brings a window to the front with the token the desktop gave with the
+            # key press, and Qt uses it when a window first appears: so a fresh overlay each time
+            if activation_token:
+                os.environ["XDG_ACTIVATION_TOKEN"] = activation_token
+            if self.overlay is not None:
+                self.overlay.deleteLater()
+                self.overlay = None
         if self.overlay is None:
             self.overlay = Overlay()
             self.overlay.setWindowIcon(self.windowIcon())
@@ -686,6 +722,7 @@ def self_test(app) -> int:
         if sys.platform.startswith("linux"):
             from Xlib import XK, display  # noqa: F401
             assert XK.string_to_keysym("F12"), "Xlib keysyms missing"
+            from jeepney.io.blocking import open_dbus_connection  # noqa: F401  (Wayland: the portal)
         elif sys.platform == "darwin":
             hk = hotkeys.HotKey()                        # really register one (and let it go) with macOS
             hk.set("Ctrl+Alt+Shift+F12")

@@ -6,8 +6,10 @@ then one key (a letter, a digit, F1-F12, Space, Tab, `, or the like).
   macOS: the system's own hotkeys (Carbon RegisterEventHotKey), on the main thread. Not pynput:
          its listener calls keyboard APIs off the main thread, and macOS kills the app for it
          (pynput issues #424, #510). This also needs no Accessibility permission.
-  Linux: X11 (XGrabKey). Wayland has no global shortcuts for apps; games running through
-         XWayland (most of them, Proton included) still see it.
+  Linux, Wayland: the desktop's GlobalShortcuts portal (GNOME 48+, KDE): the desktop asks once
+         to allow the shortcut, then tells us when it's pressed, whatever app has focus, with a
+         token that lets us bring our window to the front.
+  Linux, X11: XGrabKey.
 """
 from __future__ import annotations
 
@@ -36,22 +38,38 @@ def parse(combo: str) -> tuple[set[str], str]:
     return mods, key
 
 
+def on_wayland() -> bool:
+    if not sys.platform.startswith("linux"):
+        return False
+    from PySide6.QtGui import QGuiApplication
+    return QGuiApplication.platformName() == "wayland"
+
+
 def unsupported_reason() -> str | None:
+    if on_wayland():
+        if not portal_available():
+            return "Your desktop doesn't support app shortcuts on Wayland (GNOME 48+ and KDE do)"
+        return None
     if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
-        return "Shortcuts need X11 (Wayland doesn't let apps listen for them)"
+        return "Shortcuts need X11 or a desktop with the GlobalShortcuts portal"
     return None
 
 
 class HotKey(QObject):
-    """One global shortcut; `pressed` fires on the UI thread."""
-    pressed = Signal()
+    """One global shortcut; `pressed` fires on the UI thread, with an activation token on
+    Wayland ("" elsewhere). On Wayland, setting one asks the desktop first: `failed` says why
+    when it didn't work, `bound` when it did."""
+    pressed = Signal(str)
+    failed = Signal(str)
+    bound = Signal(str)                                 # the shortcut as the desktop describes it
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._stop = None
 
     def set(self, combo: str | None):
-        """Listen for this shortcut instead (None or "": none). Raises ValueError / RuntimeError."""
+        """Listen for this shortcut instead (None or "": none). Raises ValueError / RuntimeError.
+        On Wayland the desktop asks to allow it the first time."""
         self.stop()
         if not combo:
             return
@@ -59,12 +77,14 @@ class HotKey(QObject):
         why = unsupported_reason()
         if why:
             raise RuntimeError(why)
-        if sys.platform.startswith("linux"):
-            self._stop = _x11(mods, key, self.pressed.emit)
+        if on_wayland():
+            self._stop = _portal(mods, key, self.pressed.emit, self.failed.emit, self.bound.emit)
+        elif sys.platform.startswith("linux"):
+            self._stop = _x11(mods, key, lambda: self.pressed.emit(""))
         elif sys.platform == "darwin":
-            self._stop = _carbon(mods, key, self.pressed.emit)
+            self._stop = _carbon(mods, key, lambda: self.pressed.emit(""))
         else:
-            self._stop = _pynput(mods, key, self.pressed.emit)
+            self._stop = _pynput(mods, key, lambda: self.pressed.emit(""))
 
     def stop(self):
         if self._stop:
@@ -211,4 +231,133 @@ def _carbon(mods, key, fire):
         carbon.RemoveEventHandler(handler_ref)
         stop.handler = None                               # let the callback go only once it's unregistered
     stop.handler = handler
+    return stop
+
+
+# --- Wayland: the GlobalShortcuts portal ---------------------------------------------------
+PORTAL = ("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop")
+SHORTCUT_ID = "overlay"
+
+
+def portal_available() -> bool:
+    try:
+        from jeepney import DBusAddress, Properties
+        from jeepney.io.blocking import open_dbus_connection
+        with open_dbus_connection(bus="SESSION") as conn:
+            addr = DBusAddress(PORTAL[1], bus_name=PORTAL[0], interface="org.freedesktop.portal.GlobalShortcuts")
+            reply = conn.send_and_get_reply(Properties(addr).get("version"), timeout=3)
+            return reply.header.message_type.name == "method_return"
+    except Exception:  # noqa: BLE001 - no D-Bus, no portal
+        return False
+
+
+def _trigger(mods, key) -> str:
+    """Our "Ctrl+Shift+J" in the shortcuts spec's words: "CTRL+SHIFT+j"."""
+    names = {"ctrl": "CTRL", "shift": "SHIFT", "alt": "ALT", "meta": "LOGO"}
+    keys = {"space": "space", "tab": "Tab", "`": "grave", "escape": "Escape"}
+    k = key.upper() if key.startswith("f") and key[1:].isdigit() else keys.get(key, key)
+    return "+".join([names[m] for m in MODS if m in mods] + [k])
+
+
+def _portal(mods, key, fire, failed, bound):
+    """Bind the shortcut with the portal and listen for it, all on one background thread
+    (binding waits for you to answer the desktop's dialog)."""
+    import secrets
+
+    from jeepney import DBusAddress, MatchRule, message_bus, new_method_call
+    from jeepney.io.blocking import Proxy, open_dbus_connection
+
+    from jace_social_app import APP_ID
+
+    running = threading.Event()
+    running.set()
+    conn_box = {}
+
+    def run():
+        try:
+            conn = open_dbus_connection(bus="SESSION")
+        except Exception as e:  # noqa: BLE001
+            failed(f"Couldn't reach the desktop ({e})")
+            return
+        conn_box["conn"] = conn
+        bus = Proxy(message_bus, conn)
+        shortcuts = DBusAddress(PORTAL[1], bus_name=PORTAL[0], interface="org.freedesktop.portal.GlobalShortcuts")
+        sender = conn.unique_name[1:].replace(".", "_")
+
+        def request(method, signature, args, token):
+            """Portal calls answer with a Response signal on a request object."""
+            path = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+            rule = MatchRule(type="signal", interface="org.freedesktop.portal.Request", member="Response", path=path)
+            bus.AddMatch(rule)
+            with conn.filter(rule) as queue:
+                conn.send_and_get_reply(new_method_call(shortcuts, method, signature, args), timeout=10)
+                while running.is_set():
+                    try:
+                        return conn.recv_until_filtered(queue, timeout=1).body       # (code, results)
+                    except TimeoutError:
+                        continue
+            return 2, {}
+
+        try:
+            # say who we are (non-sandboxed apps): the desktop keeps the shortcut per app
+            try:
+                registry = DBusAddress(PORTAL[1], bus_name=PORTAL[0], interface="org.freedesktop.host.portal.Registry")
+                conn.send_and_get_reply(new_method_call(registry, "Register", "sa{sv}", (APP_ID, {})), timeout=5)
+            except Exception:  # noqa: BLE001 - older portal: it works it out itself
+                pass
+            tag = secrets.token_hex(4)
+            code, res = request("CreateSession", "a{sv}", ({"handle_token": ("s", f"jace{tag}"),
+                                                            "session_handle_token": ("s", f"jacesession{tag}")},), f"jace{tag}")
+            if code != 0:
+                failed("The desktop didn't open a shortcut session")
+                return
+            session = res["session_handle"][1]
+            conn_box["session"] = session
+            # bind every time: the desktop only sends presses for shortcuts bound in this session
+            # (it remembers what you allowed, so it only asks the first time)
+            code, res = request("BindShortcuts", "oa(sa{sv})sa{sv}", (
+                session, [(SHORTCUT_ID, {"description": ("s", "Show the Jace Social overlay"),
+                                         "preferred_trigger": ("s", _trigger(mods, key))})],
+                "", {"handle_token": ("s", f"jacebind{tag}")}), f"jacebind{tag}")
+            if code != 0:
+                failed("The shortcut wasn't allowed")
+                return
+            have = {sid: opts for sid, opts in res.get("shortcuts", ("", []))[1]}
+            desc = have.get(SHORTCUT_ID, {}).get("trigger_description", ("s", ""))[1]
+            bound(desc)
+            rule = MatchRule(type="signal", interface="org.freedesktop.portal.GlobalShortcuts", member="Activated",
+                             path=PORTAL[1])
+            bus.AddMatch(rule)
+            with conn.filter(rule) as queue:
+                while running.is_set():
+                    try:
+                        msg = conn.recv_until_filtered(queue, timeout=1)
+                    except TimeoutError:
+                        continue
+                    sess, sid, _when, options = msg.body
+                    if sess == session and sid == SHORTCUT_ID:
+                        fire(options.get("activation_token", ("s", ""))[1])
+        except Exception as e:  # noqa: BLE001 - connection closed by stop(), or the desktop went away
+            if running.is_set():
+                failed(f"The shortcut stopped working ({e})")
+
+    t = threading.Thread(target=run, name="hotkey-portal", daemon=True)
+    t.start()
+
+    def stop():
+        running.clear()
+        conn = conn_box.get("conn")
+        if conn:
+            try:
+                if conn_box.get("session"):
+                    session = DBusAddress(conn_box["session"], bus_name=PORTAL[0], interface="org.freedesktop.portal.Session")
+                    conn.send_and_get_reply(new_method_call(session, "Close"), timeout=2)
+            except Exception:  # noqa: BLE001
+                pass
+        t.join(2)
+        if conn:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
     return stop

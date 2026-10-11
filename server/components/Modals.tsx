@@ -393,7 +393,8 @@ function DesktopVersion() {
 
 /** Desktop app: open on sign-in, and the shortcut for the game overlay. */
 function DesktopOptions({ d }: { d: DesktopBridge }) {
-  const [s, setS] = useState<{ startup: boolean | null; overlayShortcut: string; overlayError: string | null; shortcutsUnsupported: string | null } | null>(null);
+  const [s, setS] = useState<{ startup: boolean | null; overlayShortcut: string; overlayError: string | null; shortcutsUnsupported: string | null;
+    overlayBoundAs?: string | null } | null>(null);
   const [recording, setRecording] = useState(false);
   const [msg, setMsg] = useState("");
   const load = () => void d.getDesktopSettings!().then(setS);
@@ -416,7 +417,7 @@ function DesktopOptions({ d }: { d: DesktopBridge }) {
   }, [recording]);     // eslint-disable-line react-hooks/exhaustive-deps
   async function save(combo: string) {
     const r = await d.setOverlayShortcut!(combo);
-    setMsg(r.error ?? (combo ? `Press ${combo} in a game to open Jace Social on top of it` : "Overlay shortcut turned off"));
+    setMsg(r.error ?? (combo ? `${r.note ? r.note + ". Then press" : "Press"} ${combo} in a game to open Jace Social on top of it` : "Overlay shortcut turned off"));
     load();
   }
   if (!s) return null;
@@ -436,6 +437,8 @@ function DesktopOptions({ d }: { d: DesktopBridge }) {
           {s.overlayShortcut && !recording && <button className="btn small" onClick={() => void save("")}>Turn off</button>}
         </div>
       )}
+      {s.overlayBoundAs && s.overlayShortcut && s.overlayBoundAs.toLowerCase() !== s.overlayShortcut.toLowerCase() &&
+        <span>Your desktop uses <b>{s.overlayBoundAs}</b> for it (change it in your desktop's keyboard settings).</span>}
       {(msg || s.overlayError) && <span>{msg || s.overlayError}</span>}
     </div>
   );

@@ -1,5 +1,8 @@
 # Jace Social desktop app changelog
 
+## 1.0.9
+- **Game overlay on Wayland** (GNOME 48+, KDE, e.g. CachyOS): the overlay shortcut now works there too. The first time, your desktop asks you to allow the shortcut (you can pick other keys in its dialog; Settings shows which ones it uses). Then the shortcut opens Jace Social in front of whatever you're doing, games included.
+
 ## 1.0.8
 - Linux: fixes a blank window on some graphics drivers (seen with new Intel graphics on GNOME/Wayland, e.g. CachyOS). The app notices, switches that computer to drawing the page in software, and restarts once by itself.
 - Linux: fixes Jace Social showing up twice in the app menu ("Jace Social" and "Jace Social (1)") when AppImageLauncher is installed. The AppImage now tells AppImageLauncher to leave it alone, and the extra entry (and its icon) is removed the next time the app starts.

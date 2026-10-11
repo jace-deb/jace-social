@@ -4,3 +4,4 @@ requests>=2.31
 # the game overlay's keyboard shortcut (jace_social_app/hotkeys.py)
 pynput>=1.7.7; sys_platform == "win32"
 python-xlib>=0.33; sys_platform == "linux"
+jeepney>=0.8; sys_platform == "linux"
