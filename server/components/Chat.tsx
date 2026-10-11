@@ -74,9 +74,23 @@ export function Chat({ target, me, people, roles = [], perms, reloadKey, onOpenP
   useEffect(() => {
     setMsgs([]); setLoading(true); setReplyTo(null); setEditing(null); setUploads([]); setCommand(null); setText("");
     stick.current = true; void load();
-    if (target.kind === "channel") api<{ commands: Command[] }>(`/channels/${target.id}/commands`).then((d) => setCommands(d.commands)).catch(() => setCommands([]));
-    else setCommands([]);
+    commandsAt.current = 0;
+    setCommands([]);
+    loadCommands();
   }, [key]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the slash commands of the bots here: when the chat opens, and again when you type "/"
+  // (a bot may have been added since), at most every 5 seconds
+  const commandsAt = useRef(0);
+  function loadCommands() {
+    if (target.kind !== "channel" || Date.now() - commandsAt.current < 5000) return;
+    commandsAt.current = Date.now();
+    const id = target.id;
+    api<{ commands: Command[] }>(`/channels/${id}/commands`)
+      .then((d) => { if (target.kind === "channel" && target.id === id) setCommands(d.commands); })
+      .catch(() => {});
+  }
+  useEffect(() => { if (text === "/") loadCommands(); }, [text]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (reloadKey) void load(); }, [reloadKey]);   // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     if (stick.current && box.current) box.current.scrollTop = box.current.scrollHeight;
@@ -201,6 +215,9 @@ export function Chat({ target, me, people, roles = [], perms, reloadKey, onOpenP
   } else if (slash !== null) {
     for (const c of commands.filter((c) => c.name.startsWith(slash)).slice(0, 12)) {
       suggestions.push({ label: `/${c.name}`, sub: `${c.description} · ${c.bot_name}`, insert: () => { setText(""); setCommand({ cmd: c, args: {} }); } });
+    }
+    if (!commands.length && slash === "") {
+      suggestions.push({ label: "No commands here yet", sub: "Add a bot like Jace: Server settings → Bots", insert: () => {} });
     }
   }
   const sel = Math.min(suggest, Math.max(0, suggestions.length - 1));
