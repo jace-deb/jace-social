@@ -1,5 +1,9 @@
 # Jace Social desktop app changelog
 
+## 1.0.8
+- Linux: fixes a blank window on some graphics drivers (seen with new Intel graphics on GNOME/Wayland, e.g. CachyOS). The app notices, switches that computer to drawing the page in software, and restarts once by itself.
+- Linux: fixes Jace Social showing up twice in the app menu ("Jace Social" and "Jace Social (1)") when AppImageLauncher is installed. The AppImage now tells AppImageLauncher to leave it alone, and the extra entry (and its icon) is removed the next time the app starts.
+
 ## 1.0.7
 - **Reload:** press F5 or Ctrl+R (Cmd+R on a Mac), or pick **Reload** in the tray menu, to load the newest Jace Social without quitting.
 - Jace Social also tells you when a new version of it is live ("Jace Social was updated - Reload"), so the app doesn't stay on an old one while it sits in the tray.

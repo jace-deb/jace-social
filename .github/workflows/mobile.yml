@@ -1,6 +1,6 @@
-# Builds the Jace Social phone apps (mobile/: the live web app in a Capacitor shell).
-# Every push uploads them as workflow artifacts; a tag like mobile-v1.0.0 also makes a
-# GitHub Release (notes from mobile/CHANGELOG.md), listed on Jace Store, with:
+# Part of "Build and release" (ci.yml). Builds the Jace Social phone apps (mobile/: the live web app in a Capacitor shell).
+# Every run uploads them as workflow artifacts; a new version (mobile/package.json) also makes
+# a GitHub Release (notes from mobile/CHANGELOG.md), listed on Jace Store, with:
 #   jace_social_mobile-<version>-android.apk       signed with the release key (secrets, see
 #                                                  packaging/make_android_key.sh) so updates install
 #   jace_social_mobile-<version>-ios-unsigned.ipa  for sideloading (AltStore / Sideloadly), since
@@ -8,11 +8,16 @@
 name: Phone apps
 
 on:
-  push:
-    branches: [main]
-    paths: ["mobile/**", ".github/workflows/mobile.yml"]
-    tags: ["mobile-v*"]
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release:
+        description: "Publish this build (all its tests passed and its version isn't released yet)"
+        type: boolean
+        default: false
+      tag:
+        description: "The release's tag, e.g. app-v1.0.8"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -36,7 +41,6 @@ jobs:
       - name: Version
         run: |
           V=$(node -p "require('./package.json').version")
-          case "$GITHUB_REF" in refs/tags/mobile-v*) V="${GITHUB_REF_NAME#mobile-v}";; esac
           echo "JACE_MOBILE_VERSION=$V" >> "$GITHUB_ENV"
       - run: npm ci
       - name: Put the version in the app (Jace Social reads it to offer updates)
@@ -49,7 +53,7 @@ jobs:
         run: |
           if [ -z "$KEYSTORE" ]; then
             # a debug key changes every build, so phones couldn't update to the next release
-            case "$GITHUB_REF" in refs/tags/*) echo "::error::Run packaging/make_android_key.sh first (sets the ANDROID_KEYSTORE_* secrets)"; exit 1;; esac
+            if [ "${{ inputs.release }}" = "true" ]; then echo "::error::Run packaging/make_android_key.sh first (sets the ANDROID_KEYSTORE_* secrets)"; exit 1; fi
             echo "::warning::No release key: this test build is debug-signed"; exit 0
           fi
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
@@ -118,7 +122,6 @@ jobs:
       - name: Version
         run: |
           V=$(node -p "require('./package.json').version")
-          case "$GITHUB_REF" in refs/tags/mobile-v*) V="${GITHUB_REF_NAME#mobile-v}";; esac
           echo "JACE_MOBILE_VERSION=$V" >> "$GITHUB_ENV"
       - run: npm ci
       - name: Put the version in the app (Jace Social reads it to offer updates)
@@ -144,7 +147,7 @@ jobs:
           path: dist/*.ipa
 
   release:
-    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    if: inputs.release
     needs: [android, android-test, ios]
     runs-on: ubuntu-latest
     permissions:
@@ -159,13 +162,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          V="${GITHUB_REF_NAME#mobile-v}"
+          TAG="${{ inputs.tag }}"
+          V="${TAG#mobile-v}"
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "$TAG is already released"; exit 0; fi
           awk -v v="$V" '$0 ~ "^## "v"$" {f=1; next} /^## / {f=0} f' mobile/CHANGELOG.md > notes.md
           # --latest=false: "Latest" stays on the desktop app, which its updater falls back to
-          gh release create "$GITHUB_REF_NAME" files/* --title "Jace Social for phones $V" --notes-file notes.md --latest=false
+          gh release create "$TAG" files/* --target "$GITHUB_SHA" --title "Jace Social for phones $V" --notes-file notes.md --latest=false
 
   store:
-    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    if: inputs.release
     needs: release
     runs-on: ubuntu-latest
     env:
@@ -176,4 +181,4 @@ jobs:
       - name: Publish to Jace Store
         run: |
           if [ -z "$JACE_STORE_TOKEN" ]; then echo "::warning::JACE_STORE_TOKEN not set"; exit 0; fi
-          python3 packaging/publish_app.py "$GITHUB_REF_NAME"
+          python3 packaging/publish_app.py "${{ inputs.tag }}"

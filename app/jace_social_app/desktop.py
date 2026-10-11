@@ -276,6 +276,51 @@ def _register_links():
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
+def remove_duplicate_entries(appimage: Path | None = None) -> int:
+    """Remove menu entries other tools made for our AppImage. AppImageLauncher (installed on
+    many systems) watches ~/Applications and adds its own appimagekit_<hash>-Jace_Social.desktop,
+    which showed up as a second "Jace Social (1)" next to ours. The AppImage now says
+    X-AppImage-Integrate=false so that stops (see packaging/build_appimage.sh); this cleans up
+    entries it made before. Other apps' entries are left alone. Never raises; returns how many."""
+    try:
+        paths = {str(p) for p in (appimage, installed_path(), running_appimage(), os.environ.get("APPIMAGE")) if p}
+        apps = DATA_HOME / "applications"
+        entries = sorted(apps.glob("appimagekit_*.desktop")) if apps.is_dir() else []
+    except OSError:
+        return 0
+    removed = 0
+    for f in entries:
+        try:
+            lines = f.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        runs = [ln.split("=", 1)[1] for ln in lines if ln.startswith(("Exec=", "TryExec="))]
+        ours = any(p in r for p in paths for r in runs) or any(APP_ID in ln for ln in lines)
+        if not ours:
+            continue
+        ident = next((ln.split("=", 1)[1].strip() for ln in lines if ln.startswith("X-AppImage-Identifier=")), "")
+        try:
+            f.unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            continue
+        if ident:                                  # its copies of our icon
+            try:
+                for icon in (DATA_HOME / "icons").rglob(f"appimagekit_{ident}_*"):
+                    try:
+                        icon.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+    if removed:
+        try:
+            _refresh_menus()
+        except OSError:
+            pass
+    return removed
+
+
 def _refresh_menus():
     for cmd in (["update-desktop-database", str(MENU_FILE.parent)],
                 ["gtk-update-icon-cache", "-q", "-t", str(DATA_HOME / "icons" / "hicolor")]):
@@ -349,6 +394,7 @@ def install(target_dir: Path = DEFAULT_DIR, menu=True, desktop=True, startup=Tru
     if menu:
         _register_links()
     write_json(RECORD, {"path": str(exe), "version": APP_VERSION, "parts": done})
+    remove_duplicate_entries(exe)
     status("Done")
     return exe
 
@@ -358,6 +404,7 @@ def uninstall(delete_running=False):
     delete_running also deletes the AppImage file we're running from (e.g. the download)."""
     exe = installed_path()
     running = running_appimage() if delete_running else None
+    remove_duplicate_entries(exe)                  # before the AppImage goes, while we can still match it
     for p in (MENU_FILE, desktop_shortcut(), AUTOSTART_FILE, ICON_FILE, BIN_LINK, METAINFO_FILE, exe, running):
         if p and (p.is_symlink() or p.exists()):
             p.unlink()

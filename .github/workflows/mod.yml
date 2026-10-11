@@ -1,18 +1,18 @@
-# Builds the Jace Social mod for every Minecraft version and loader, starts the game
-# with each build to prove it loads, and on a mod-v* tag publishes the jars to
-# Jace Store.
+# Part of "Build and release" (ci.yml): builds the Jace Social mod for every Minecraft version
+# and loader and starts the game with each build to prove it loads. When ci.yml says so
+# (everything passed, new version), publishes the jars to Jace Store and tags the release.
 name: Mod
 
 on:
-  push:
-    branches: [main]
-    paths: ["mod/**", ".github/workflows/mod.yml"]
-    tags: ["mod-v*"]
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      nodes:
-        description: "Only these targets, comma-separated (e.g. 1.21.1-fabric,1.20.4-neoforge). Empty = all."
-        required: false
+      release:
+        description: "Publish this build (all its tests passed and its version isn't released yet)"
+        type: boolean
+        default: false
+      tag:
+        description: "The release's tag, e.g. app-v1.0.8"
+        type: string
         default: ""
 
 permissions:
@@ -27,10 +27,8 @@ jobs:
       - id: pick
         env:
           ALL: "1.20.1-fabric,1.20.1-forge,1.20.2-fabric,1.20.4-fabric,1.20.4-neoforge,1.20.6-fabric,1.20.6-neoforge,1.21.1-fabric,1.21.1-neoforge,1.21.3-fabric,1.21.3-neoforge,1.21.4-fabric,1.21.4-neoforge,1.21.5-fabric,1.21.5-neoforge,1.21.8-fabric,1.21.8-neoforge,1.21.10-fabric,1.21.10-neoforge,1.21.11-fabric,1.21.11-neoforge,26.1.2-fabric,26.1.2-neoforge,26.2-fabric,26.2-neoforge,26.3-fabric,26.3-neoforge"
-          ONLY: ${{ github.event.inputs.nodes }}
         run: |
-          list="${ONLY:-$ALL}"
-          echo "nodes=$(echo "$list" | tr -d ' ' | jq -Rc 'split(",") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+          echo "nodes=$(echo "$ALL" | tr -d ' ' | jq -Rc 'split(",") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
 
   build:
     needs: targets
@@ -91,9 +89,11 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/mod-v')
+    if: inputs.release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       JACE_STORE_TOKEN: ${{ secrets.JACE_STORE_TOKEN }}
       JACE_STORE_PROJECT: jace-social-minecraft
@@ -107,3 +107,9 @@ jobs:
         run: |
           if [ -z "$JACE_STORE_TOKEN" ]; then echo "::warning::JACE_STORE_TOKEN not set"; exit 0; fi
           python3 packaging/publish_mod.py jars
+      - name: Tag the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/${{ inputs.tag }}" -f sha="$GITHUB_SHA" >/dev/null \
+            || gh api "repos/${{ github.repository }}/git/ref/tags/${{ inputs.tag }}" >/dev/null

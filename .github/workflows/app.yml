@@ -1,15 +1,20 @@
-# Builds the Jace Social desktop app for Windows, macOS and Linux, then tests that each
-# download installs itself, updates and uninstalls. Every push uploads the builds as
-# workflow artifacts; a tag like app-v1.0.0 also makes a GitHub Release (notes from
+# Part of "Build and release" (ci.yml): builds the Jace Social desktop app for Windows, macOS
+# and Linux, then tests that each download installs itself, updates and uninstalls. When
+# ci.yml says so (everything passed, new version), it also makes the GitHub Release (notes from
 # app/CHANGELOG.md) and lists it on Jace Store.
 name: Desktop app
 
 on:
-  push:
-    branches: [main]
-    paths: ["app/**", ".github/workflows/app.yml"]
-    tags: ["app-v*"]
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release:
+        description: "Publish this build (all its tests passed and its version isn't released yet)"
+        type: boolean
+        default: false
+      tag:
+        description: "The release's tag, e.g. app-v1.0.8"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -298,7 +303,7 @@ jobs:
           xvfb-run -a dl/*.AppImage --self-test
 
   release:
-    if: startsWith(github.ref, 'refs/tags/app-v')
+    if: inputs.release
     needs: [windows, wine, macos, linux, linux-newer]
     runs-on: ubuntu-latest
     permissions:
@@ -313,12 +318,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          V="${GITHUB_REF_NAME#app-v}"
+          TAG="${{ inputs.tag }}"
+          V="${TAG#app-v}"
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "$TAG is already released"; exit 0; fi
           awk -v v="$V" '$0 ~ "^## "v"$" {f=1; next} /^## / {f=0} f' app/CHANGELOG.md > notes.md
-          gh release create "$GITHUB_REF_NAME" files/* --title "Jace Social $V" --notes-file notes.md
+          gh release create "$TAG" files/* --target "$GITHUB_SHA" --title "Jace Social $V" --notes-file notes.md
 
   store:
-    if: startsWith(github.ref, 'refs/tags/app-v')
+    if: inputs.release
     needs: release
     runs-on: ubuntu-latest
     env:
@@ -329,4 +336,4 @@ jobs:
       - name: Publish to Jace Store
         run: |
           if [ -z "$JACE_STORE_TOKEN" ]; then echo "::warning::JACE_STORE_TOKEN not set"; exit 0; fi
-          python3 packaging/publish_app.py "$GITHUB_REF_NAME"
+          python3 packaging/publish_app.py "${{ inputs.tag }}"

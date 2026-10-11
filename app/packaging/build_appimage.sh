@@ -75,6 +75,8 @@ chmod +x "$APPDIR/AppRun"
 cp assets/icon.png "$APPDIR/$APP_ID.png"
 cp assets/icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_ID.png"
 ln -sf "$APP_ID.png" "$APPDIR/.DirIcon"
+# X-AppImage-Integrate=false: AppImageLauncher leaves us alone (we add our own menu entry;
+# its own would show up as a second "Jace Social (1)"). Only in this embedded file.
 cat > "$APPDIR/$APP_ID.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
@@ -86,6 +88,7 @@ Icon=$APP_ID
 Terminal=false
 Categories=Network;Chat;InstantMessaging;
 Keywords=minecraft;friends;chat;voice;call;servers;
+X-AppImage-Integrate=false
 DESKTOP
 cp "$APPDIR/$APP_ID.desktop" "$APPDIR/usr/share/applications/"
 "$PY" -c "from jace_social_app.desktop import metainfo; print(metainfo(), end='')" \

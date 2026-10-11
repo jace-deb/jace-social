@@ -1,0 +1,142 @@
+# Build and release: the one workflow for everything in this repository.
+#
+# Every push to main builds and tests what changed:
+#   website (server/)  typecheck + production build (Vercel deploys it itself, and only if its
+#                      own build works)
+#   desktop app (app/) Windows, macOS and Linux builds, each installed, updated and uninstalled
+#   mod (mod/)         every Minecraft version and loader, each started in the real game
+#   phone apps         Android (and run on an emulator) and iPhone builds
+#   site/              the old GitHub Pages address (it only redirects)
+#
+# Releasing is automatic: when a part's version (app/jace_social_app/__init__.py,
+# mod/stonecutter.properties.toml, mobile/package.json) has no release yet, and all of that part's
+# builds and tests pass, it's published (GitHub Release / Jace Store) and tagged app-v*, mod-v*
+# or mobile-v*. If anything fails, nothing of that part is published. So to release: bump the
+# version (and its CHANGELOG) and push.
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:          # run everything (and release anything with a new version)
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build-and-release
+  cancel-in-progress: false   # never stop a release halfway
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      website: ${{ steps.plan.outputs.website }}
+      site: ${{ steps.plan.outputs.site }}
+      desktop: ${{ steps.plan.outputs.desktop }}
+      desktop_release: ${{ steps.plan.outputs.desktop_release }}
+      desktop_tag: ${{ steps.plan.outputs.desktop_tag }}
+      mod: ${{ steps.plan.outputs.mod }}
+      mod_release: ${{ steps.plan.outputs.mod_release }}
+      mod_tag: ${{ steps.plan.outputs.mod_tag }}
+      phone: ${{ steps.plan.outputs.phone }}
+      phone_release: ${{ steps.plan.outputs.phone_release }}
+      phone_tag: ${{ steps.plan.outputs.phone_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # history and tags: what changed, what's released
+      - id: plan
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # what changed in this push (everything, when started by hand or the history is unknown)
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+             && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+          else
+            changed="everything"
+          fi
+          echo "Changed:"; echo "$changed" | head -50
+          touched() {      # touched <path prefix>...: did this push change any of them (or the workflows)?
+            [ "$changed" = "everything" ] && return 0
+            for p in "$@" .github/workflows/; do echo "$changed" | grep -q "^$p" && return 0; done
+            return 1
+          }
+          released() { git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
+          part() {         # part <name> <version> <tag prefix> <paths...>
+            name=$1 version=$2 tag="$3$2"; shift 3
+            release=false
+            released "$tag" || release=true
+            run=false
+            { touched "$@" || [ "$release" = true ]; } && run=true
+            echo "$name: version $version, release $tag: $release, build: $run"
+            { echo "$name=$run"; echo "${name}_release=$release"; echo "${name}_tag=$tag"; } >> "$GITHUB_OUTPUT"
+          }
+          part desktop "$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' app/jace_social_app/__init__.py)" app-v app/ packaging/
+          part mod "$(sed -n 's/^mod.version = "\(.*\)"/\1/p' mod/stonecutter.properties.toml)" mod-v mod/ packaging/publish_mod.py
+          part phone "$(node -p "require('./mobile/package.json').version")" mobile-v mobile/ packaging/
+          touched server/ && echo "website=true" >> "$GITHUB_OUTPUT" || echo "website=false" >> "$GITHUB_OUTPUT"
+          touched site/ && echo "site=true" >> "$GITHUB_OUTPUT" || echo "site=false" >> "$GITHUB_OUTPUT"
+
+  website:
+    needs: plan
+    if: needs.plan.outputs.website == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npx next build
+
+  desktop:
+    needs: plan
+    if: needs.plan.outputs.desktop == 'true'
+    uses: ./.github/workflows/app.yml
+    with:
+      release: ${{ needs.plan.outputs.desktop_release == 'true' && github.ref == 'refs/heads/main' }}
+      tag: ${{ needs.plan.outputs.desktop_tag }}
+    secrets: inherit
+
+  mod:
+    needs: plan
+    if: needs.plan.outputs.mod == 'true'
+    uses: ./.github/workflows/mod.yml
+    with:
+      release: ${{ needs.plan.outputs.mod_release == 'true' && github.ref == 'refs/heads/main' }}
+      tag: ${{ needs.plan.outputs.mod_tag }}
+    secrets: inherit
+
+  phone:
+    needs: plan
+    if: needs.plan.outputs.phone == 'true'
+    uses: ./.github/workflows/mobile.yml
+    with:
+      release: ${{ needs.plan.outputs.phone_release == 'true' && github.ref == 'refs/heads/main' }}
+      tag: ${{ needs.plan.outputs.phone_tag }}
+    secrets: inherit
+
+  site:
+    # site/ is the old GitHub Pages address (jace-deb.github.io/jace-social); it redirects to the website
+    needs: plan
+    if: needs.plan.outputs.site == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v5

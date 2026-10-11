@@ -755,12 +755,55 @@ def running_under_wine() -> bool:
         return False
 
 
-def main():
-    close_splash()
+def add_chromium_flags(*flags: str):
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join([os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", ""), *flags]).strip()
+
+
+# Some graphics drivers can't show Chromium's GPU-composited page (seen: a new Intel chip with
+# Mesa on GNOME/Wayland): the page loads but the window stays blank, and Qt logs this. Then the
+# app remembers to composite in software on this computer and restarts once.
+BLANK_PAGE_SIGN = "is not a Vulkan texture"
+
+
+def setup_page_drawing() -> bool:
+    """Call before the first web page. Returns True when it's watching for the blank-page problem."""
     if running_under_wine():
         # Chromium's GPU compositor crashes on Wine without a real GPU driver (seen with
         # Soda), so draw the web page in software there; real Windows keeps the GPU
-        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "") + " --disable-gpu").strip()
+        add_chromium_flags("--disable-gpu")
+        return False
+    if pref("software_compositing") or os.environ.get("JACE_SOFTWARE_COMPOSITING"):
+        add_chromium_flags("--disable-gpu-compositing")
+        return False
+    if not sys.platform.startswith("linux"):
+        return False
+    from PySide6.QtCore import qInstallMessageHandler
+    state = {"restarting": False, "previous": None}
+
+    def handler(mode, context, message):
+        if BLANK_PAGE_SIGN in message and not state["restarting"]:
+            state["restarting"] = True
+            set_pref("software_compositing", True)
+            print("[Jace Social] this graphics driver can't show the page with GPU compositing: restarting in software", flush=True)
+            QTimer.singleShot(0, restart_self)
+        if state["previous"]:
+            state["previous"](mode, context, message)
+        else:
+            sys.stderr.write(message + "\n")
+    state["previous"] = qInstallMessageHandler(handler)
+    return True
+
+
+def restart_self():
+    """Start this same app again in place (same process id, same arguments)."""
+    args = sys.argv[1:] if getattr(sys, "frozen", False) else sys.orig_argv[1:]
+    sys.stdout.flush()
+    os.execv(sys.executable, [sys.executable, *args])
+
+
+def main():
+    close_splash()
+    setup_page_drawing()
     argv = sys.argv[1:]
     if desktop.handle_cli(argv):
         return
@@ -811,6 +854,8 @@ def main():
     QLocalServer.removeServer(key)
     server = QLocalServer()
     server.listen(key)
+    if desktop.running_appimage() and desktop.running_installed_copy():
+        desktop.remove_duplicate_entries()       # AppImageLauncher's "Jace Social (1)" from before 1.0.8
 
     try:
         win = Window()
