@@ -396,7 +396,7 @@ function DesktopVersion() {
 /** Desktop app: open on sign-in, and the shortcut for the game overlay. */
 function DesktopOptions({ d }: { d: DesktopBridge }) {
   const [s, setS] = useState<{ startup: boolean | null; overlayShortcut: string; overlayError: string | null; shortcutsUnsupported: string | null;
-    overlayBoundAs?: string | null } | null>(null);
+    overlayBoundAs?: string | null; overlayManagedByDesktop?: boolean } | null>(null);
   const [recording, setRecording] = useState(false);
   const [msg, setMsg] = useState("");
   const load = () => void d.getDesktopSettings!().then(setS);
@@ -432,15 +432,26 @@ function DesktopOptions({ d }: { d: DesktopBridge }) {
         Open Jace Social when I sign in to my computer
       </label>
       <span>Game overlay shortcut</span>
-      {s.shortcutsUnsupported ? <span>{s.shortcutsUnsupported}</span> : (
+      {s.shortcutsUnsupported ? <span>{s.shortcutsUnsupported}</span> : s.overlayManagedByDesktop ? (
+        // Wayland: the desktop asks to allow the shortcut, and its settings choose the keys
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {s.overlayShortcut ? <>
+            <span>Press <b>{s.overlayBoundAs || "your shortcut"}</b> to open Jace Social on top of a game.</span>
+            {d.configureOverlayShortcut && <button className="btn small" onClick={async () => {
+              const r = await d.configureOverlayShortcut!();
+              setMsg(r.error ?? "Pick the keys in your desktop's window, then come back");
+              setTimeout(load, 4000);
+            }}>Change keys…</button>}
+            <button className="btn small" onClick={() => void save("")}>Turn off</button>
+          </> : <button className="btn small" onClick={() => void save("Ctrl+Shift+J")}>Turn on the overlay shortcut</button>}
+        </div>
+      ) : (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           <button className={`btn small${recording ? " primary" : ""}`} onClick={() => { setMsg(""); setRecording(!recording); }}>
             {recording ? "Press the keys… (Esc to cancel)" : s.overlayShortcut || "Set shortcut"}</button>
           {s.overlayShortcut && !recording && <button className="btn small" onClick={() => void save("")}>Turn off</button>}
         </div>
       )}
-      {s.overlayBoundAs && s.overlayShortcut && s.overlayBoundAs.toLowerCase() !== s.overlayShortcut.toLowerCase() &&
-        <span>Your desktop uses <b>{s.overlayBoundAs}</b> for it (change it in your desktop's keyboard settings).</span>}
       {(msg || s.overlayError) && <span>{msg || s.overlayError}</span>}
     </div>
   );

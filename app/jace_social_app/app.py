@@ -51,6 +51,7 @@ BRIDGE_JS = """
       getDesktopSettings: function () { return call("getDesktopSettings"); },
       setStartup: function (on) { return call("setStartup", !!on); },
       setOverlayShortcut: function (combo) { return call("setOverlayShortcut", String(combo || "")); },
+      configureOverlayShortcut: function () { return call("configureOverlayShortcut"); },
       setAutoUpdateCheck: function (on) { b.setAutoUpdateCheck(!!on); },
       applyUpdate: function () { b.applyUpdate(); },
       deleteApp: function () { b.deleteApp(); },
@@ -225,6 +226,8 @@ class Bridge(QObject):
             "overlayError": w.hotkey_error,
             # Wayland: the keys the desktop actually uses (you can pick others in its dialog)
             "overlayBoundAs": pretty_trigger(pref("overlay_bound_as", "")) if hotkeys.on_wayland() else None,
+            # Wayland: the desktop owns the keys (its dialog picks them, its settings change them)
+            "overlayManagedByDesktop": hotkeys.on_wayland(),
             "shortcutsUnsupported": hotkeys.unsupported_reason(),
         }))
 
@@ -241,6 +244,11 @@ class Bridge(QObject):
         err = self.window.set_overlay_shortcut(combo.strip())
         note = "Your desktop will ask you to allow it" if combo.strip() and hotkeys.on_wayland() and not err else None
         self.reply.emit(rid, json.dumps({"error": err} if err else {"ok": True, "note": note}))
+
+    @Slot(int)
+    def configureOverlayShortcut(self, rid: int):
+        ok = self.window.hotkey.configure()
+        self.reply.emit(rid, json.dumps({"ok": True} if ok else {"error": "Turn the shortcut on first"}))
 
     @Slot(int)
     def getAutoUpdateCheck(self, rid: int):

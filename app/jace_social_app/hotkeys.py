@@ -66,6 +66,14 @@ class HotKey(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._stop = None
+        self._commands = None               # Wayland: things for the portal thread to do
+
+    def configure(self) -> bool:
+        """Wayland: open the desktop's own screen for changing the shortcut. False if it can't."""
+        if self._commands is None:
+            return False
+        self._commands.append("configure")
+        return True
 
     def set(self, combo: str | None):
         """Listen for this shortcut instead (None or "": none). Raises ValueError / RuntimeError.
@@ -78,7 +86,8 @@ class HotKey(QObject):
         if why:
             raise RuntimeError(why)
         if on_wayland():
-            self._stop = _portal(mods, key, self.pressed.emit, self.failed.emit, self.bound.emit)
+            self._commands = []
+            self._stop = _portal(mods, key, self.pressed.emit, self.failed.emit, self.bound.emit, self._commands)
         elif sys.platform.startswith("linux"):
             self._stop = _x11(mods, key, lambda: self.pressed.emit(""))
         elif sys.platform == "darwin":
@@ -87,6 +96,7 @@ class HotKey(QObject):
             self._stop = _pynput(mods, key, lambda: self.pressed.emit(""))
 
     def stop(self):
+        self._commands = None
         if self._stop:
             stop, self._stop = self._stop, None
             stop()
@@ -259,12 +269,12 @@ def _trigger(mods, key) -> str:
     return "+".join([names[m] for m in MODS if m in mods] + [k])
 
 
-def _portal(mods, key, fire, failed, bound):
+def _portal(mods, key, fire, failed, bound, commands):
     """Bind the shortcut with the portal and listen for it, all on one background thread
     (binding waits for you to answer the desktop's dialog)."""
     import secrets
 
-    from jeepney import DBusAddress, MatchRule, message_bus, new_method_call
+    from jeepney import DBusAddress, HeaderFields, MatchRule, message_bus, new_method_call
     from jeepney.io.blocking import Proxy, open_dbus_connection
 
     from jace_social_app import APP_ID
@@ -325,14 +335,28 @@ def _portal(mods, key, fire, failed, bound):
             have = {sid: opts for sid, opts in res.get("shortcuts", ("", []))[1]}
             desc = have.get(SHORTCUT_ID, {}).get("trigger_description", ("s", ""))[1]
             bound(desc)
-            rule = MatchRule(type="signal", interface="org.freedesktop.portal.GlobalShortcuts", member="Activated",
-                             path=PORTAL[1])
+            # presses (Activated), and new keys chosen in the desktop's settings (ShortcutsChanged)
+            rule = MatchRule(type="signal", interface="org.freedesktop.portal.GlobalShortcuts", path=PORTAL[1])
             bus.AddMatch(rule)
             with conn.filter(rule) as queue:
                 while running.is_set():
+                    while commands:
+                        if commands.pop(0) == "configure":
+                            try:
+                                conn.send_and_get_reply(new_method_call(shortcuts, "ConfigureShortcuts", "osa{sv}",
+                                                                        (session, "", {})), timeout=5)
+                            except Exception as e:  # noqa: BLE001 - portal version 1: no such method
+                                failed(f"Change it in your desktop's keyboard settings ({e.__class__.__name__})")
                     try:
                         msg = conn.recv_until_filtered(queue, timeout=1)
                     except TimeoutError:
+                        continue
+                    if msg.header.fields.get(HeaderFields.member) == "ShortcutsChanged":
+                        sess, changed = msg.body
+                        if sess == session:
+                            for sid, opts in changed:
+                                if sid == SHORTCUT_ID:
+                                    bound(opts.get("trigger_description", ("s", ""))[1])
                         continue
                     sess, sid, _when, options = msg.body
                     if sess == session and sid == SHORTCUT_ID:

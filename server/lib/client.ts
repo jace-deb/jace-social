@@ -188,9 +188,11 @@ export type DesktopBridge = {
   checkForUpdate?(): Promise<UpdateCheck>;
   /** Open on sign-in and the overlay shortcut (1.0.5+). */
   getDesktopSettings?(): Promise<{ startup: boolean | null; overlayShortcut: string; overlayError: string | null; shortcutsUnsupported: string | null;
-    overlayBoundAs?: string | null }>;
+    overlayBoundAs?: string | null; overlayManagedByDesktop?: boolean }>;
   setStartup?(on: boolean): Promise<{ ok?: boolean; error?: string }>;
   setOverlayShortcut?(combo: string): Promise<{ ok?: boolean; error?: string; note?: string | null }>;
+  /** Wayland: open the desktop's own screen for changing the overlay shortcut (1.0.11+). */
+  configureOverlayShortcut?(): Promise<{ ok?: boolean; error?: string }>;
   /** "Check for updates on startup" (1.0.4+). */
   getAutoUpdateCheck?(): Promise<boolean>;
   setAutoUpdateCheck?(on: boolean): void;

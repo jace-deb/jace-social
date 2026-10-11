@@ -1,5 +1,8 @@
 # Jace Social desktop app changelog
 
+## 1.0.11
+- **Overlay shortcut on Wayland** (GNOME, KDE): your desktop now owns the keys. Settings shows the keys it uses (like Ctrl+Shift+J); **Change keys…** opens your desktop's own window to pick others, and Jace Social follows when you do. Before, choosing different keys in Jace Social didn't reach the desktop, so the shortcut seemed not to work.
+
 ## 1.0.10
 - Fixes an all-white window when you open Jace Social again after closing it, on desktops without a tray icon (like GNOME). Closing the window now keeps Jace Social running in the background there too, so messages still reach you; opening it again brings it back as it was.
 - Notifications now show on desktops without a tray icon (GNOME), as normal desktop notifications.
