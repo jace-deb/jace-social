@@ -59,8 +59,11 @@ def main():
 
     res = subprocess.run(["node", str(CLI), "project", SLUG, "--json"], capture_output=True, text=True)
     if res.returncode != 0:
-        print(f"::warning::Jace Store project '{SLUG}' not found - create it first. Skipping.")
-        return
+        why = (res.stderr or res.stdout).strip()
+        if "not found" in why.lower() or "404" in why:
+            print(f"::warning::Jace Store project '{SLUG}' not found - create it first. Skipping.")
+            return
+        sys.exit(f"Couldn't reach Jace Store: {why[:500]}")      # fail the step, so it shows and can be run again
     if version in {v["version_number"] for v in json.loads(res.stdout).get("versions", [])}:
         print(f"{version} is already on Jace Store")
         return
