@@ -472,3 +472,8 @@ select.btn { width: auto; }
 .bot-activity-row:hover { background: var(--bg2); }
 .bot-activity-row.error { color: var(--red); }
 .bot-activity-row.log { font-family: ui-monospace, monospace; font-size: 13px; }
+
+/* a new version of the website is live: offer a reload */
+.new-version { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px;
+  background: var(--panel); border: 1px solid var(--green); border-radius: 12px; padding: 8px 10px 8px 14px; box-shadow: 0 10px 30px var(--shadow);
+  font-size: 14px; max-width: calc(100vw - 32px); }

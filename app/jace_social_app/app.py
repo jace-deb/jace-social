@@ -405,6 +405,9 @@ class Window(QMainWindow):
         self.view.loadFinished.connect(self._loaded)
         self.setCentralWidget(self.view)
         self.view.setUrl(QUrl(url))
+        # F5 / Ctrl+R (Cmd+R): load the newest Jace Social (the app stays open for days)
+        for keys in (QKeySequence.StandardKey.Refresh, QKeySequence("Ctrl+R")):
+            QShortcut(keys, self, self.view.reload)
 
         self.tray = None
         if QSystemTrayIcon.isSystemTrayAvailable():
@@ -417,10 +420,13 @@ class Window(QMainWindow):
             update.triggered.connect(lambda: self.check_for_update(self._update_dialog, fresh=True))
             quit_ = QAction("Quit", menu)
             quit_.triggered.connect(self.quit)
+            reload_ = QAction("Reload", menu)
+            reload_.triggered.connect(lambda: (self.view.reload(), self.bring_up()))
             overlay = QAction("Show overlay", menu)
             overlay.triggered.connect(lambda: QTimer.singleShot(0, self.toggle_overlay))
             menu.addAction(show)
             menu.addAction(overlay)
+            menu.addAction(reload_)
             menu.addAction(update)
             menu.addSeparator()
             menu.addAction(quit_)

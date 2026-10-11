@@ -19,6 +19,7 @@ import { LinkGuard } from "./Markdown";
 import { nameStyle } from "./Message";
 import { MinecraftDevice } from "./MinecraftDevice";
 import { MobileUpdate } from "./MobileUpdate";
+import { NewVersion } from "./NewVersion";
 import { AccountSwitcher, AddServerModal, NewGroupModal, ProfileModal, SettingsModal, StatusEditor, type SettingsTab } from "./Modals";
 import { ServerOnboarding, Welcome } from "./Onboarding";
 import { inviteLink, ServerSettings } from "./ServerSettings";
@@ -620,6 +621,7 @@ function Main({ me, setMe, signOut, inviteCode }: {
           onOpenChannel={(id) => setView({ kind: "server", id: detail.server.id, channel: id })} />
       )}
       <CallPanel calls={calls} info={call} people={people} />
+      <NewVersion busy={call.state !== "idle" || !!room.channelId} />
       {moveCall && call.state === "idle" && (
         <div className="call-panel" role="dialog" aria-label="Move your call here">
           <Avatar p={people[moveCall.peer] ?? { name: moveCall.name || "?" }} size={44} />

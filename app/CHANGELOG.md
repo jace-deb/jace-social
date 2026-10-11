@@ -1,5 +1,9 @@
 # Jace Social desktop app changelog
 
+## 1.0.7
+- **Reload:** press F5 or Ctrl+R (Cmd+R on a Mac), or pick **Reload** in the tray menu, to load the newest Jace Social without quitting.
+- Jace Social also tells you when a new version of it is live ("Jace Social was updated - Reload"), so the app doesn't stay on an old one while it sits in the tray.
+
 ## 1.0.6
 - macOS: fixes the app closing when you set the overlay shortcut. It now uses macOS's own keyboard shortcuts, so it also no longer needs Accessibility permission.
 
