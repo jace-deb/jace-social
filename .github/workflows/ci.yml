@@ -1,6 +1,7 @@
 # Build and release: the one workflow for everything in this repository.
 #
-# Every push to main builds and tests what changed:
+# Every push to main builds and tests only the parts whose own files changed (a part's folder or
+# its own workflow file; nothing else, not even ci.yml):
 #   website (server/)  typecheck + production build (Vercel deploys it itself, and only if its
 #                      own build works)
 #   desktop app (app/) Windows, macOS and Linux builds, each installed, updated and uninstalled
@@ -60,9 +61,9 @@ jobs:
             changed="everything"
           fi
           echo "Changed:"; echo "$changed" | head -50
-          touched() {      # touched <path prefix>...: did this push change any of them (or the workflows)?
+          touched() {      # touched <path prefix>...: did this push change any of them?
             [ "$changed" = "everything" ] && return 0
-            for p in "$@" .github/workflows/; do echo "$changed" | grep -q "^$p" && return 0; done
+            for p in "$@"; do echo "$changed" | grep -q "^$p" && return 0; done
             return 1
           }
           released() { git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
@@ -75,9 +76,9 @@ jobs:
             echo "$name: version $version, release $tag: $release, build: $run"
             { echo "$name=$run"; echo "${name}_release=$release"; echo "${name}_tag=$tag"; } >> "$GITHUB_OUTPUT"
           }
-          part desktop "$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' app/jace_social_app/__init__.py)" app-v app/ packaging/
-          part mod "$(sed -n 's/^mod.version = "\(.*\)"/\1/p' mod/stonecutter.properties.toml)" mod-v mod/ packaging/publish_mod.py
-          part phone "$(node -p "require('./mobile/package.json').version")" mobile-v mobile/ packaging/
+          part desktop "$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' app/jace_social_app/__init__.py)" app-v app/ .github/workflows/app.yml
+          part mod "$(sed -n 's/^mod.version = "\(.*\)"/\1/p' mod/stonecutter.properties.toml)" mod-v mod/ .github/workflows/mod.yml
+          part phone "$(node -p "require('./mobile/package.json').version")" mobile-v mobile/ .github/workflows/mobile.yml
           touched server/ && echo "website=true" >> "$GITHUB_OUTPUT" || echo "website=false" >> "$GITHUB_OUTPUT"
           touched site/ && echo "site=true" >> "$GITHUB_OUTPUT" || echo "site=false" >> "$GITHUB_OUTPUT"
 
