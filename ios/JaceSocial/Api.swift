@@ -37,7 +37,7 @@ final class Api {
             (data, response) = try await URLSession.shared.data(for: req)
         } catch {
             #if DEBUG
-            print("Jace API \(method) \(path) failed: \(error)")
+            NSLog("Jace API %@ %@ failed: %@", method, path, String(describing: error))
             #endif
             throw ApiError(status: 0, message: "Can't reach Jace Social - check your internet connection")
         }
