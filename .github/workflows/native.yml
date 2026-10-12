@@ -99,7 +99,7 @@ jobs:
         run: |
           xcodebuild -project JaceSocial.xcodeproj -scheme JaceSocial -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO build | tail -40
+            CODE_SIGNING_ALLOWED=NO build > build.log 2>&1 || { grep -E "error:" build.log | sort -u; tail -20 build.log; exit 1; }
           test -d "build/Build/Products/Debug-iphonesimulator/Jace Social.app"
       - name: Start it in the simulator and screenshot it
         run: |

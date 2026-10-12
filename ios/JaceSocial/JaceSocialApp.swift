@@ -13,7 +13,7 @@ struct JaceSocialApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
+            SwiftUI.Group {
                 if session.token == nil { SignInView() } else { MainView(session: session).id(session.token) }
             }
             .environmentObject(session)
