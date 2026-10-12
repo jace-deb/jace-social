@@ -241,7 +241,7 @@ private fun MessageRow(m: Message, sender: Person?, grouped: Boolean, reply: Rep
             if (grouped) Spacer(Modifier.width(40.dp)) else Avatar(sender ?: Person(m.sender ?: "", "?"), 40)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                if (reply != null) Text("↪ ${who(reply.sender)?.shownName ?: "Someone"}: ${reply.body.ifBlank { "(attachment)" }}",
+                if (reply != null) Text("↪ ${who(reply.sender)?.shownName ?: "Someone"}: ${plain(reply.body).ifBlank { "(attachment)" }}",
                     color = JaceColors.muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (!grouped) Row(verticalAlignment = Alignment.Bottom) {
                     Text(sender?.shownName ?: "Someone", fontWeight = FontWeight.SemiBold)
@@ -319,3 +319,6 @@ private fun minutesBetween(a: String, b: String): Long {
     val y = parseTime(b) ?: return 99
     return (y.epochSecond - x.epochSecond) / 60
 }
+
+/** A message without its formatting marks, for one-line previews. */
+fun plain(body: String) = body.replace(Regex("""\*\*|__|~~|[*`]"""), "")

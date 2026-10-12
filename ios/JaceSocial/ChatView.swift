@@ -201,7 +201,7 @@ struct MessageRow: View {
                 else { Avatar(person: sender ?? Person(uuid: message.sender ?? "", name: "?"), size: 40) }
                 VStack(alignment: .leading, spacing: 3) {
                     if let r = reply {
-                        Text("↪ \(who(r.sender)?.shownName ?? "Someone"): \(r.body.isEmpty ? "(attachment)" : r.body)")
+                        Text("↪ \(who(r.sender)?.shownName ?? "Someone"): \(r.body.isEmpty ? "(attachment)" : plain(r.body))")
                             .font(.footnote).foregroundStyle(JaceColor.muted).lineLimit(1)
                     }
                     if !grouped {
@@ -273,6 +273,11 @@ struct AttachmentView: View {
             }
         }
     }
+}
+
+/// A message without its formatting marks, for one-line previews.
+func plain(_ body: String) -> String {
+    body.replacingOccurrences(of: "(\\*\\*|__|~~|[*`])", with: "", options: .regularExpression)
 }
 
 /// The website's message formatting, the common part: **bold**, *italic*, `code`, ~~strike~~, links, @mentions.
