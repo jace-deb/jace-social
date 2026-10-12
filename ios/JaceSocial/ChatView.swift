@@ -269,7 +269,7 @@ struct AttachmentView: View {
                 .frame(maxWidth: 260, maxHeight: 260)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
-                Link("📎 \(attachment.name)", destination: u).foregroundStyle(JaceColor.green)
+                SwiftUI.Link("📎 \(attachment.name)", destination: u).foregroundStyle(JaceColor.green)
             }
         }
     }
