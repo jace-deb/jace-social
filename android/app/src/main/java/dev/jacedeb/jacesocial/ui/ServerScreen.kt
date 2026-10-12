@@ -103,7 +103,8 @@ fun ServerScreen(session: Session, store: Store, id: String, title: String, open
                     }
                 }
             }
-            val members = d.members.sortedWith(compareBy({ !it.online }, { it.shownName.lowercase() }))
+            // DM unread counts don't belong in a member list
+            val members = d.members.map { it.copy(unread = 0) }.sortedWith(compareBy({ !it.online }, { it.shownName.lowercase() }))
             item { SectionTitle("Members — ${members.size}") }
             items(members, key = { "m" + it.uuid }) { p -> PersonRow(p, if (p.online) describe(p) else "Offline") }
         }

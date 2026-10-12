@@ -46,7 +46,8 @@ struct ServerView: View {
                         ForEach(group.channels) { c in channelRow(c, d).listRowBackground(JaceColor.bg) }
                     }
                 }
-                let members = d.members.sorted { ($0.online ? 0 : 1, $0.shownName.lowercased()) < ($1.online ? 0 : 1, $1.shownName.lowercased()) }
+                // DM unread counts don't belong in a member list
+                let members = d.members.map { p -> Person in var p = p; p.unread = nil; return p }.sorted { ($0.online ? 0 : 1, $0.shownName.lowercased()) < ($1.online ? 0 : 1, $1.shownName.lowercased()) }
                 Section("Members — \(members.count)") {
                     ForEach(members) { p in PersonRow(person: p, line: p.online ? describe(p) : "Offline").listRowBackground(JaceColor.bg) }
                 }
