@@ -14,9 +14,9 @@ Jace Social for phones is being rewritten as two native apps (the user's choice,
 | Project file | XcodeGen (`ios/project.yml`) | Gradle (Kotlin DSL) |
 
 Both talk to the same API as the website ([api.md](api.md)) and get the same live events. They keep
-the current app's id (`dev.jacedeb.jacesocial`), so they install over the Capacitor app (`mobile/`),
-which stays the published phone app until the native ones do everything it does. Then they replace
-it as version 2.0.0.
+the earlier app's id (`dev.jacedeb.jacesocial`) and Android signing key, so 2.0.0 installs over the
+Capacitor app (1.x, the website in a shell). Releasing works like before: bump `mobile/package.json`
+and `mobile/CHANGELOG.md`, push; the "phone" part (native.yml) builds, tests and publishes them.
 
 Building: only on GitHub (the "native" part of Build and release). The iPhone app needs a Mac, so it
 is only ever built on GitHub's macOS runners. CI starts each app (Android emulator, iOS simulator),
@@ -36,23 +36,23 @@ so it opens as a web page inside the app.
 - `Store`: app state (me, friends, groups, servers, open chat), refreshed by API calls and live events
 - Screens: listed below
 
-## Features (✓ = done on both)
+## Features (✓ = done on both; released in 2.0.0)
 
-- [ ] Sign in with Jace / with Minecraft, sign out, account switcher
-- [ ] Friends: list with presence and activity, requests (send, accept, decline, cancel), remove
-- [ ] Direct messages: history, send, edit, delete, reply, reactions, typing, read state, pins
-- [ ] Messages: markdown, @mentions, link previews, attachments (upload, images, files), link warning
-- [ ] Group chats: create, rename, icon, members, leave
-- [ ] Servers: list, create, join by invite, channels by category, unread, text channels
-- [ ] Server settings: roles, permissions, channels, overrides, invites, vanity link, bans, onboarding,
+- [x] Sign in with Jace / with Minecraft, sign out, account switcher
+- [x] Friends: list with presence and activity, requests (send, accept, decline, cancel), remove
+- [x] Direct messages: history, send, edit, delete, reply, reactions, typing, read state, pins
+- [x] Messages: markdown, @mentions, link previews, attachments (upload, images, files), link warning
+- [x] Group chats: create, rename, icon, members, leave
+- [x] Servers: list, create, join by invite, channels by category, unread, text channels
+- [x] Server settings: roles, permissions, channels, overrides, invites, vanity link, bans, onboarding,
       members (kick, ban, time out, nickname, roles), bots
-- [ ] Slash commands from bots
-- [ ] Profiles: view, edit (name, bio, pronouns, links, avatar, banner, accent), status and custom status
-- [ ] Voice calls with friends (WebRTC): ring, answer, mute, camera, screen sharing, move between devices
-- [ ] Voice channels and group calls (mesh), camera and screen sharing in them
-- [ ] Notifications (while running, then push)
-- [ ] Bots: my bots, create, token, code editor + Try it, block editor (web view), activity log
-- [ ] Settings: appearance (themes, accent, text size, compact), notifications, privacy, links, accounts
-- [ ] Onboarding / welcome tour, server onboarding
-- [ ] Invite links (jacesocial://invite/<code>, https links)
-- [ ] Updates: the "new version" prompt (Android: APK; iPhone: release page)
+- [x] Slash commands from bots
+- [x] Profiles: view, edit (name, bio, pronouns, links, avatar, banner, accent), status and custom status
+- [x] Voice calls with friends (WebRTC): ring, answer, mute, camera, screen sharing (Android; iPhone sees others'), move between devices
+- [x] Voice channels and group calls (mesh), camera and screen sharing in them
+- [x] Notifications while the app runs (in the background too); push when it's closed is still to do (APNs / FCM keys)
+- [x] Bots: my bots, create, token, code editor + Try it, block editor (web view), activity log
+- [x] Settings: appearance (themes, accent, text size, compact), notifications, privacy, links, accounts
+- [x] Onboarding / welcome tour, server onboarding
+- [x] Invite links (jacesocial://invite/<code>, https links)
+- [x] Updates: the "new version" prompt (Android: APK; iPhone: release page)

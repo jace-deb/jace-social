@@ -1,14 +1,26 @@
-# Part of "Build and release" (ci.yml): the native phone apps (docs/native-apps.md), still being
-# built. Builds both, starts each (Android emulator, iOS simulator) and uploads screenshots of it.
-# Nothing is published yet: the Capacitor app (mobile/) stays the released phone app until these
-# do everything it does.
-name: Native apps
+# Part of "Build and release" (ci.yml): the Jace Social phone apps, native (docs/native-apps.md):
+# Android (android/, Kotlin) and iPhone (ios/, Swift). Builds both, starts each (Android emulator,
+# iOS simulator) against a fake API (native-test/) and screenshots its screens. The release builds:
+#   jace_social_mobile-<version>-android.apk       signed with the release key (secrets), installs
+#                                                  over earlier versions, the Capacitor 1.x app too
+#   jace_social_mobile-<version>-ios-unsigned.ipa  for sideloading (AltStore / Sideloadly)
+# The version is mobile/package.json's "version", what's new is in mobile/CHANGELOG.md.
+name: Phone apps
 
 on:
   workflow_call:
+    inputs:
+      release:
+        description: "Publish this build (all its tests passed and its version isn't released yet)"
+        type: boolean
+        default: false
+      tag:
+        description: "The release's tag, e.g. mobile-v2.0.0"
+        type: string
+        default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   android:
@@ -23,9 +35,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Version
+        run: echo "JACE_ANDROID_VERSION=$(python3 -c "import json; print(json.load(open('../mobile/package.json'))['version'])")" >> "$GITHUB_ENV"
       - name: Build
         env:
-          JACE_ANDROID_VERSION: "2.0.0"
           JACE_API_BASE: http://10.0.2.2:8787   # the fake API on the runner (debug builds only; not released)
         run: ./gradlew assembleDebug --no-daemon --stacktrace
       - name: Name it
@@ -36,28 +49,30 @@ jobs:
         with:
           name: native-android
           path: dist/*.apk
-      # a build to try on a real phone: the real server, signed with the release key (the same as
-      # the Capacitor app's, so it installs over it). Not published anywhere, only kept with the run.
+      # the real build: the real server, signed with the release key (the same as the Capacitor
+      # app's, so it installs over it). Kept with the run; published when this version is released.
       - name: Release key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE" ]; then echo "::warning::No release key: the phone test build is debug-signed"; exit 0; fi
+          if [ -z "$KEYSTORE" ]; then
+            # a debug key changes every build, so phones couldn't update to the next release
+            if [ "${{ inputs.release }}" = "true" ]; then echo "::error::Run packaging/make_android_key.sh first (sets the ANDROID_KEYSTORE_* secrets)"; exit 1; fi
+            echo "::warning::No release key: this build is debug-signed"; exit 0
+          fi
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           echo "ANDROID_KEYSTORE_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
-      - name: Build the phone test (real server)
-        env:
-          JACE_ANDROID_VERSION: "2.0.0"
+      - name: Build the release (real server)
         run: |
           ./gradlew assembleRelease --no-daemon
-          mkdir -p ../test
-          cp app/build/outputs/apk/release/app-release.apk ../test/jace_social-2.0.0-test-android.apk
+          mkdir -p ../release
+          cp app/build/outputs/apk/release/app-release.apk "../release/jace_social_mobile-$JACE_ANDROID_VERSION-android.apk"
       - uses: actions/upload-artifact@v7
         with:
-          name: native-android-phone-test
-          path: test/*.apk
+          name: mobile-android
+          path: release/*.apk
 
   android-run:
     # install it on an emulator, open it and screenshot it
@@ -101,6 +116,8 @@ jobs:
         working-directory: ios
     steps:
       - uses: actions/checkout@v7
+      - name: Version
+        run: echo "JACE_MOBILE_VERSION=$(python3 -c "import json; print(json.load(open('../mobile/package.json'))['version'])")" >> "$GITHUB_ENV"
       - name: Make the Xcode project (XcodeGen)
         run: |
           brew install xcodegen
@@ -150,3 +167,57 @@ jobs:
         with:
           name: native-ios-screenshots
           path: "*.png"
+      - name: Build the release (unsigned, for sideloading)
+        run: |
+          IFS=. read -r MA MI PA <<< "$JACE_MOBILE_VERSION"
+          xcodebuild -project JaceSocial.xcodeproj -scheme JaceSocial -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -derivedDataPath release \
+            MARKETING_VERSION="$JACE_MOBILE_VERSION" CURRENT_PROJECT_VERSION=$((MA * 10000 + MI * 100 + PA)) \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build > release.log 2>&1 \
+            || { grep -E "error:" release.log | sort -u; tail -20 release.log; exit 1; }
+          mkdir -p ../dist Payload
+          cp -R "release/Build/Products/Release-iphoneos/Jace Social.app" Payload/
+          zip -qry "../dist/jace_social_mobile-$JACE_MOBILE_VERSION-ios-unsigned.ipa" Payload
+          ls -l ../dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mobile-ios
+          path: dist/*.ipa
+
+  release:
+    if: inputs.release
+    needs: [android, android-run, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: mobile-*
+          path: files
+          merge-multiple: true
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          V="${TAG#mobile-v}"
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "$TAG is already released"; exit 0; fi
+          awk -v v="$V" '$0 ~ "^## "v"$" {f=1; next} /^## / {f=0} f' mobile/CHANGELOG.md > notes.md
+          # --latest=false: "Latest" stays on the desktop app, which its updater falls back to
+          gh release create "$TAG" files/* --target "$GITHUB_SHA" --title "Jace Social for phones $V" --notes-file notes.md --latest=false
+
+  store:
+    if: inputs.release
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      JACE_STORE_TOKEN: ${{ secrets.JACE_STORE_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish to Jace Store
+        run: |
+          if [ -z "$JACE_STORE_TOKEN" ]; then echo "::error::JACE_STORE_TOKEN isn't set"; exit 1; fi
+          python3 packaging/publish_app.py "${{ inputs.tag }}"
