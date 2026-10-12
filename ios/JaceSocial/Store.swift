@@ -48,7 +48,13 @@ final class Store: ObservableObject {
         await guarded { self.me = try await self.session.api.me() }
         if let m = me { live.start(m.realtime, inbox: m.inbox); session.remember(m) }
         heartbeat = Task { while !Task.isCancelled { await api.presence(); try? await Task.sleep(nanoseconds: 120_000_000_000) } }
-        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        // ask about notifications without waiting for the answer (loading carries on meanwhile);
+        // test builds signed in by CI don't ask, so the question doesn't cover the screenshots
+        var ask = true
+        #if DEBUG
+        if UserDefaults.standard.string(forKey: "jaceToken") != nil { ask = false }
+        #endif
+        if ask { Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) } }
         Task { try? await Task.sleep(nanoseconds: 3_000_000_000); _ = await checkUpdate(auto: true) }
         await refreshAll()
     }

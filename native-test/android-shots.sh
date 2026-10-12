@@ -4,6 +4,8 @@
 set -x
 APP=dev.jacedeb.jacesocial
 adb install -r dl/*.apk
+# allow notifications up front, so the question doesn't cover the screenshots
+adb shell pm grant $APP android.permission.POST_NOTIFICATIONS
 adb shell monkey -p $APP -c android.intent.category.LAUNCHER 1
 sleep 15
 adb exec-out screencap -p > android-start.png
