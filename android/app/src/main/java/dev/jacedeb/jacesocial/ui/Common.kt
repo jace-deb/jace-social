@@ -29,7 +29,7 @@ fun SectionTitle(text: String) {
 }
 
 @Composable
-fun PersonRow(p: Person, line: String) {
+fun PersonRow(p: Person, line: String, actions: (@Composable () -> Unit)? = null) {
     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Avatar(p, 44)
         Spacer(Modifier.width(12.dp))
@@ -38,6 +38,7 @@ fun PersonRow(p: Person, line: String) {
             Text(line, color = JaceColors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
         }
         if (p.unread > 0) UnreadBadge(p.unread)
+        actions?.invoke()
     }
 }
 

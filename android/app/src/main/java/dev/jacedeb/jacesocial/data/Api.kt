@@ -117,4 +117,16 @@ class Api(private val token: () -> String?) {
             else call("POST", "/channels/${(t as ChatTarget.Channel).id}/read")
         }
     }
+
+    // friends
+    /** Send a friend request by Minecraft or Jace name (@name: Jace only). "accepted" if they'd already asked you. */
+    suspend fun addFriend(name: String): String {
+        val res = call("POST", "/friends", JsonObject(mapOf("name" to JsonPrimitive(name))).toString())
+        return json.parseToJsonElement(res).jsonObject["status"]?.jsonPrimitive?.contentOrNull ?: "pending"
+    }
+    suspend fun respondFriend(uuid: String, accept: Boolean) {
+        call("POST", "/friends/respond", JsonObject(mapOf("uuid" to JsonPrimitive(uuid), "accept" to JsonPrimitive(accept))).toString())
+    }
+    /** Remove a friend, or cancel / decline a request. */
+    suspend fun removeFriend(uuid: String) { call("DELETE", "/friends?uuid=$uuid") }
 }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 /** What the app shows everywhere: you, your friends, group chats and servers. Loaded from the
  *  API and kept current by live events. */
 class Store(private val session: Session) {
+    val api get() = session.api
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     val live = Live()
     val me = MutableStateFlow<Me?>(null)
@@ -63,6 +64,11 @@ class Store(private val session: Session) {
             kotlinx.coroutines.delay(6000)
             typing.value = typing.value + (key to ((typing.value[key] ?: emptySet()) - name))
         }
+    }
+
+    /** Accept, decline, cancel or remove (shows errors like the rest), then reload the friends list. */
+    fun friendAction(work: suspend (Api) -> Unit) = scope.launch {
+        guard { work(session.api); friends.value = session.api.friends() }
     }
 
     private suspend fun guard(work: suspend () -> Unit) {

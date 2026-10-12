@@ -57,6 +57,8 @@ struct ChatRoute: Hashable {
 /// Your conversations: friends (direct messages) and group chats, unread first.
 struct ChatsView: View {
     @EnvironmentObject var store: Store
+    @State private var adding = false
+    @State private var removing: Person?
 
     var body: some View {
         List {
@@ -64,7 +66,34 @@ struct ChatsView: View {
             if let f = store.friends {
                 if !f.incoming.isEmpty {
                     Section("Friend requests — \(f.incoming.count)") {
-                        ForEach(f.incoming) { PersonRow(person: $0, line: "Wants to be friends") }
+                        ForEach(f.incoming) { p in
+                            HStack {
+                                PersonRow(person: p, line: "Wants to be friends")
+                                Button { store.friendAction { try await $0.respondFriend(p.uuid, accept: true) } } label: {
+                                    Image(systemName: "checkmark.circle.fill").font(.title2).foregroundStyle(JaceColor.green)
+                                }
+                                .accessibilityLabel("Accept")
+                                Button { store.friendAction { try await $0.respondFriend(p.uuid, accept: false) } } label: {
+                                    Image(systemName: "xmark.circle.fill").font(.title2).foregroundStyle(JaceColor.muted)
+                                }
+                                .accessibilityLabel("Decline")
+                            }
+                            .buttonStyle(.borderless)
+                            .listRowBackground(JaceColor.bg)
+                        }
+                    }
+                }
+                if !f.outgoing.isEmpty {
+                    Section("Sent requests — \(f.outgoing.count)") {
+                        ForEach(f.outgoing) { p in
+                            HStack {
+                                PersonRow(person: p, line: "Waiting for them to accept")
+                                Button("Cancel") { store.friendAction { try await $0.removeFriend(p.uuid) } }
+                                    .foregroundStyle(JaceColor.muted)
+                            }
+                            .buttonStyle(.borderless)
+                            .listRowBackground(JaceColor.bg)
+                        }
                     }
                 }
                 if !store.groups.isEmpty {
@@ -81,6 +110,9 @@ struct ChatsView: View {
                             PersonRow(person: p, line: p.online ? describe(p) : "Offline")
                         }
                         .listRowBackground(JaceColor.bg)
+                        .contextMenu {
+                            Button(role: .destructive) { removing = p } label: { Label("Remove friend", systemImage: "person.badge.minus") }
+                        }
                     }
                 }
             } else {
@@ -91,12 +123,76 @@ struct ChatsView: View {
         .background(JaceColor.bg)
         .navigationTitle("Chats")
         .refreshable { await store.refreshAll() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { adding = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Add friend")
+            }
+        }
+        .sheet(isPresented: $adding) { AddFriendView().environmentObject(store) }
+        .confirmationDialog("Remove \(removing?.shownName ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible, presenting: removing) { p in
+            Button("Remove friend", role: .destructive) { store.friendAction { try await $0.removeFriend(p.uuid) } }
+        } message: { _ in Text("You won't be friends any more. Your messages stay.") }
     }
 
     func dmOrder(_ a: Person, _ b: Person) -> Bool {
         if (a.unread ?? 0) != (b.unread ?? 0) { return (a.unread ?? 0) > (b.unread ?? 0) }
         if a.online != b.online { return a.online }
         return a.shownName.lowercased() < b.shownName.lowercased()
+    }
+}
+
+/// Send a friend request by Minecraft or Jace name.
+struct AddFriendView: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var busy = false
+    @State private var result: String?
+    @State private var failed = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Username", text: $name)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($focused).submitLabel(.send).onSubmit { Task { await send() } }
+                        .onChange(of: name) { _ in result = nil }
+                } footer: { Text("Their Minecraft username, or @name for a Jace account.") }
+                if let r = result { Text(r).foregroundStyle(failed ? JaceColor.red : JaceColor.green) }
+            }
+            .scrollContentBackground(.hidden)
+            .background(JaceColor.bg)
+            .navigationTitle("Add a friend")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Send") { Task { await send() } }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || busy)
+                }
+            }
+            .onAppear { focused = true }
+        }
+        .presentationDetents([.medium])
+    }
+
+    func send() async {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty, !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let status = try await store.session.api.addFriend(n)
+            result = status == "accepted" ? "You're now friends with \(n)!" : "Friend request sent to \(n)."
+            failed = false
+            name = ""
+            await store.refreshFriends()
+        } catch {
+            result = error.localizedDescription
+            failed = true
+        }
     }
 }
 

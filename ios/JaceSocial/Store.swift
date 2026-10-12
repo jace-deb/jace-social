@@ -67,6 +67,11 @@ final class Store: ObservableObject {
         }
     }
 
+    /// Accept, decline, cancel or remove (shows errors like the rest), then reload the friends list.
+    func friendAction(_ work: @escaping (Api) async throws -> Void) {
+        Task { await guarded { try await work(self.session.api); self.friends = try await self.session.api.friends() } }
+    }
+
     private func guarded(_ work: @escaping () async throws -> Void) async {
         do {
             try await work()

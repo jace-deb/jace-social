@@ -86,7 +86,7 @@ FIXTURES = {
     "/me": dict(PEOPLE[ME], display_name=None, minecraft_linked=True, jace_linked=True, inbox="demo-inbox",
                 realtime={"url": "", "key": ""}, settings={}, onboarded=True),
     "/friends": {"friends": [PEOPLE[STEVE], PEOPLE[ALEX], PEOPLE[ZED]], "incoming": [person("e" * 32, "Notch", online=False)],
-                 "outgoing": []},
+                 "outgoing": [person("f" * 32, "Herobrine", online=False)]},
     "/groups": {"groups": [{"id": GROUP, "name": "Build team", "icon_url": None, "owner": ME,
                             "members": [PEOPLE[ME], PEOPLE[STEVE], PEOPLE[ALEX]], "unread": 1, "last_message_at": at(15)}]},
     "/servers": {"servers": [{"id": SID, "name": "Jace Craft", "icon_url": None, "role": "owner", "unread": 2}]},

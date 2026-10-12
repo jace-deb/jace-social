@@ -1,7 +1,30 @@
 package dev.jacedeb.jacesocial.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.ImeAction
+import dev.jacedeb.jacesocial.data.Person
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,14 +56,27 @@ import dev.jacedeb.jacesocial.data.Group
 import dev.jacedeb.jacesocial.data.Store
 
 /** Your conversations: friends (direct messages) and group chats, unread first. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatsScreen(store: Store, open: (ChatTarget, String) -> Unit) {
     val friends by store.friends.collectAsState()
     val groups by store.groups.collectAsState()
     val error by store.error.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Chats", fontWeight = FontWeight.Bold) })
+        var adding by remember { mutableStateOf(false) }
+        var removing by remember { mutableStateOf<Person?>(null) }
+        var menuFor by remember { mutableStateOf<String?>(null) }
+        TopAppBar(title = { Text("Chats", fontWeight = FontWeight.Bold) },
+            actions = { IconButton(onClick = { adding = true }) { Icon(Icons.Filled.PersonAdd, "Add friend") } })
+        if (adding) AddFriendDialog(store) { adding = false }
+        removing?.let { p ->
+            AlertDialog(onDismissRequest = { removing = null },
+                title = { Text("Remove ${p.shownName}?") },
+                text = { Text("You won't be friends any more. Your messages stay.") },
+                confirmButton = { TextButton(onClick = { store.friendAction { it.removeFriend(p.uuid) }; removing = null }) {
+                    Text("Remove", color = JaceColors.red) } },
+                dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } })
+        }
         PullToRefreshBox(isRefreshing = false, onRefresh = { store.refreshAll() }, modifier = Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize()) {
                 error?.let { item { Text(it, color = JaceColors.red, modifier = Modifier.padding(16.dp)) } }
@@ -48,23 +84,82 @@ fun ChatsScreen(store: Store, open: (ChatTarget, String) -> Unit) {
                 if (f == null) { item { Text("Loading…", color = JaceColors.muted, modifier = Modifier.padding(16.dp)) }; return@LazyColumn }
                 if (f.incoming.isNotEmpty()) {
                     item { SectionTitle("Friend requests — ${f.incoming.size}") }
-                    items(f.incoming, key = { "in" + it.uuid }) { PersonRow(it, "Wants to be friends") }
+                    items(f.incoming, key = { "in" + it.uuid }) { p ->
+                        PersonRow(p, "Wants to be friends") {
+                            IconButton(onClick = { store.friendAction { it.respondFriend(p.uuid, true) } }) {
+                                Icon(Icons.Filled.Check, "Accept", tint = JaceColors.green) }
+                            IconButton(onClick = { store.friendAction { it.respondFriend(p.uuid, false) } }) {
+                                Icon(Icons.Filled.Close, "Decline", tint = JaceColors.muted) }
+                        }
+                    }
+                }
+                if (f.outgoing.isNotEmpty()) {
+                    item { SectionTitle("Sent requests — ${f.outgoing.size}") }
+                    items(f.outgoing, key = { "out" + it.uuid }) { p ->
+                        PersonRow(p, "Waiting for them to accept") {
+                            TextButton(onClick = { store.friendAction { it.removeFriend(p.uuid) } }) { Text("Cancel", color = JaceColors.muted) }
+                        }
+                    }
                 }
                 if (groups.isNotEmpty()) {
                     item { SectionTitle("Group chats") }
                     items(groups, key = { "g" + it.id }) { g -> GroupRow(g) { open(ChatTarget.Channel(g.id), g.name) } }
                 }
                 item { SectionTitle("Direct messages") }
-                val sorted = f.friends.sortedWith(compareByDescending<dev.jacedeb.jacesocial.data.Person> { it.unread }
+                val sorted = f.friends.sortedWith(compareByDescending<Person> { it.unread }
                     .thenByDescending { it.online }.thenBy { it.shownName.lowercase() })
                 items(sorted, key = { it.uuid }) { p ->
-                    Box(Modifier.fillMaxWidth().clickable { open(ChatTarget.Direct(p.uuid), p.shownName) }) {
+                    Box(Modifier.fillMaxWidth().combinedClickable(onLongClick = { menuFor = p.uuid }) { open(ChatTarget.Direct(p.uuid), p.shownName) }) {
                         PersonRow(p, if (p.online) describe(p) else "Offline")
+                        DropdownMenu(expanded = menuFor == p.uuid, onDismissRequest = { menuFor = null }) {
+                            DropdownMenuItem(text = { Text("Message") }, onClick = { menuFor = null; open(ChatTarget.Direct(p.uuid), p.shownName) })
+                            DropdownMenuItem(text = { Text("Remove friend", color = JaceColors.red) }, onClick = { menuFor = null; removing = p })
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** Send a friend request by Minecraft or Jace name. */
+@Composable
+fun AddFriendDialog(store: Store, onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    fun send() {
+        val n = name.trim()
+        if (n.isEmpty() || busy) return
+        busy = true
+        scope.launch {
+            try {
+                val status = store.api.addFriend(n)
+                result = if (status == "accepted") "You're now friends with $n!" else "Friend request sent to $n."
+                failed = false
+                name = ""
+                store.refreshFriends()
+            } catch (e: Exception) {
+                result = e.message; failed = true
+            }
+            busy = false
+        }
+    }
+    AlertDialog(onDismissRequest = onDone,
+        title = { Text("Add a friend") },
+        text = {
+            Column {
+                Text("Their Minecraft username, or @name for a Jace account.", color = JaceColors.muted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(name, { name = it; result = null }, singleLine = true, placeholder = { Text("Username") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { send() }))
+                result?.let { Text(it, color = if (failed) JaceColors.red else JaceColors.green, modifier = Modifier.padding(top = 8.dp)) }
+            }
+        },
+        confirmButton = { TextButton(onClick = ::send, enabled = name.isNotBlank() && !busy) { Text("Send request") } },
+        dismissButton = { TextButton(onClick = onDone) { Text("Done") } })
 }
 
 @Composable

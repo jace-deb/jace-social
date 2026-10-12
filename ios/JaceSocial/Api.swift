@@ -124,4 +124,16 @@ final class Api {
         case .channel(let c): _ = try? await call("POST", "/channels/\(c)/read")
         }
     }
+
+    // friends
+    /// Send a friend request by Minecraft or Jace name (@name: Jace only). "accepted" if they'd already asked you.
+    func addFriend(_ name: String) async throws -> String {
+        let data = try await call("POST", "/friends", body: ["name": name])
+        return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["status"] as? String ?? "pending"
+    }
+    func respondFriend(_ uuid: String, accept: Bool) async throws {
+        _ = try await call("POST", "/friends/respond", body: ["uuid": uuid, "accept": accept])
+    }
+    /// Remove a friend, or cancel / decline a request.
+    func removeFriend(_ uuid: String) async throws { _ = try await call("DELETE", "/friends?uuid=\(uuid)") }
 }
