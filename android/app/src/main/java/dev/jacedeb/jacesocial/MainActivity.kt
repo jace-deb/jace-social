@@ -19,27 +19,43 @@ import dev.jacedeb.jacesocial.data.Store
 import dev.jacedeb.jacesocial.ui.JaceTheme
 import dev.jacedeb.jacesocial.ui.MainScreen
 import dev.jacedeb.jacesocial.ui.SignInScreen
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
     private val session by lazy { Session(applicationContext) }
     private var startAt: String? = null
+    /** Invite links and notifications to open (handled once signed in). */
+    private val links = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         testHooks(intent)
+        handle(intent)
         setContent {
-            JaceTheme {
+            val token by session.token.collectAsState()
+            val store = remember(token) { token?.let { Store(session, applicationContext) } }
+            val me = store?.me?.collectAsState()?.value
+            JaceTheme(me?.settings) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    val token by session.token.collectAsState()
-                    if (token == null) SignInScreen(session) else {
-                        val store = remember(token) { Store(session) }
+                    if (store == null) SignInScreen(session) else {
                         DisposableEffect(store) { store.start(); onDispose { store.stop() } }
-                        MainScreen(session, store, startAt)
+                        MainScreen(session, store, startAt, links)
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handle(intent)
+    }
+
+    private fun handle(intent: Intent?) {
+        val link = intent?.getStringExtra("open") ?: intent?.data?.toString() ?: return
+        links.value = null
+        links.value = link
     }
 
     /** Test builds only (CI's screenshots, with native-test/mock_api.py): --es jace_token <t> signs

@@ -60,23 +60,8 @@ jobs:
           arch: x86_64
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            adb install -r dl/*.apk
-            adb shell monkey -p dev.jacedeb.jacesocial -c android.intent.category.LAUNCHER 1
-            sleep 15
-            adb exec-out screencap -p > android-start.png
-            adb shell pidof dev.jacedeb.jacesocial
-            adb shell am start -S -n dev.jacedeb.jacesocial/.MainActivity --es jace_token demo
-            sleep 10
-            adb exec-out screencap -p > android-chats.png
-            adb shell "am start -S -n dev.jacedeb.jacesocial/.MainActivity --es jace_open 'chat/dm/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb?title=Steve'"
-            sleep 10
-            adb exec-out screencap -p > android-chat.png
-            adb shell "am start -S -n dev.jacedeb.jacesocial/.MainActivity --es jace_open 'server/22222222-2222-2222-2222-222222222222?title=Jace%20Craft'"
-            sleep 10
-            adb exec-out screencap -p > android-server.png
-            adb shell pidof dev.jacedeb.jacesocial
-            adb logcat -d -s AndroidRuntime:E | tail -40
+          # (the runner runs each line of a script on its own, so the steps are in a file)
+          script: bash native-test/android-shots.sh
       - name: What the fake API was asked
         if: always()
         run: tail -40 mock.log
@@ -130,6 +115,12 @@ jobs:
           SIMCTL_CHILD_JACE_API_BASE=http://127.0.0.1:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo -jaceOpen "server:22222222-2222-2222-2222-222222222222:Jace Craft"
           sleep 20
           xcrun simctl io "$DEVICE" screenshot ../ios-server.png
+          for shot in "profile:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:x" "serversettings:22222222-2222-2222-2222-222222222222:x" "bots:x:x"; do
+            xcrun simctl terminate "$DEVICE" dev.jacedeb.jacesocial
+            SIMCTL_CHILD_JACE_API_BASE=http://127.0.0.1:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo -jaceOpen "$shot"
+            sleep 15
+            xcrun simctl io "$DEVICE" screenshot "../ios-${shot%%:*}.png"
+          done
           tail -30 ../mock.log
           xcrun simctl spawn "$DEVICE" log show --last 3m --style compact --predicate 'process == "Jace Social"' | grep -iE "jace api|error|fail|ats|transport" | tail -40 || true
       - uses: actions/upload-artifact@v7

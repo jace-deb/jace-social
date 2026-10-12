@@ -1,66 +1,163 @@
 import SwiftUI
 
-/// Signed in: tabs for chats, servers and you; chats open on top.
+/// Signed in: tabs for chats, servers and you, with everything else opening on top. A call shows
+/// over everything; a voice room keeps a bar at the bottom.
 struct MainView: View {
     @EnvironmentObject var session: Session
     @StateObject private var store: Store
-    @State private var chatPath = NavigationPath()
-    @State private var serverPath = NavigationPath()
-    @State private var tab = 0
+    @StateObject private var router = Router()
+    @Environment(\.colorScheme) private var scheme
+    @State private var callShown = true
+    @State private var welcome = false
+    let links: String?
 
-    init(session: Session) {
+    init(session: Session, links: String? = nil) {
         _store = StateObject(wrappedValue: Store(session: session))
+        self.links = links
     }
 
     var body: some View {
-        TabView(selection: $tab) {
-            NavigationStack(path: $chatPath) {
-                ChatsView()
-                    .navigationDestination(for: ChatRoute.self) { r in ChatView(target: r.target, title: r.title) }
+        let lookKey = JaceColor.apply(store.me?.settings, systemDark: scheme == .dark)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $router.tab) {
+                NavigationStack(path: $router.paths[0]) { ChatsView().navigationDestination(for: Route.self) { screen($0) } }
+                    .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }.tag(0)
+                NavigationStack(path: $router.paths[1]) { ServersView().navigationDestination(for: Route.self) { screen($0) } }
+                    .tabItem { Label("Servers", systemImage: "server.rack") }.tag(1)
+                NavigationStack(path: $router.paths[2]) { YouView().navigationDestination(for: Route.self) { screen($0) } }
+                    .tabItem { Label("You", systemImage: "person.crop.circle") }.tag(2)
             }
-            .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
-            .tag(0)
-            NavigationStack(path: $serverPath) {
-                ServersView()
-                    .navigationDestination(for: ServerRoute.self) { r in ServerView(id: r.id, title: r.name) }
-                    .navigationDestination(for: ChatRoute.self) { r in ChatView(target: r.target, title: r.title) }
+            VStack(spacing: 6) {
+                if store.calls.info.state != "idle" && !callShown {
+                    ActiveBar(text: "📞 \(store.calls.info.state == "in-call" ? "In a call with" : "Calling") \(store.calls.info.peerName)") { callShown = true }
+                }
+                if let room = store.voice.state.channelId, !room.isEmpty {
+                    ActiveBar(text: "🔊 In \(store.voice.state.channelName)") { router.go(.voice) }
+                }
+                if let t = store.toast {
+                    Text(t).font(.subheadline).padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(JaceColor.panel, in: RoundedRectangle(cornerRadius: 12)).foregroundStyle(JaceColor.text)
+                        .shadow(radius: 6).onTapGesture { store.toast = nil }
+                }
             }
-            .tabItem { Label("Servers", systemImage: "server.rack") }
-            .tag(1)
-            NavigationStack { YouView() }
-                .tabItem { Label("You", systemImage: "person.crop.circle") }
-                .tag(2)
+            .padding(.bottom, 56)
         }
+        .id(lookKey)
         .environmentObject(store)
+        .environmentObject(router)
+        .preferredColorScheme(JaceColor.light ? .light : .dark)
+        .tint(JaceColor.green)
+        .dynamicTypeSize(dynamicSize(store.me?.settings?.font_scale))
+        .fullScreenCover(isPresented: Binding(get: { store.calls.info.state != "idle" && callShown }, set: { if !$0 { callShown = false } })) {
+            CallView(minimize: { callShown = false }).environmentObject(store).environmentObject(router)
+        }
+        .onChange(of: store.calls.info.state) { s in if s == "ringing" || s == "calling" { callShown = true } }
+        .sheet(isPresented: $welcome) { NavigationStack { WelcomeView() }.environmentObject(store).environmentObject(router) }
+        .alert(store.askUpdate.map { "Update to Jace Social \($0.version)?" } ?? "", isPresented: Binding(get: { store.askUpdate != nil }, set: { if !$0 { store.askUpdate = nil } }),
+               presenting: store.askUpdate) { r in
+            Button("Update now") { if let u = URL(string: r.page) { UIApplication.shared.open(u) } }
+            Button("Later", role: .cancel) {}
+        } message: { r in Text("Get the new version from the release page.\n\n\((r.notes ?? "").prefix(600))") }
+        .alert("Leaving Jace Social", isPresented: Binding(get: { store.pendingLink.map { !trusted($0) } ?? false }, set: { if !$0 { store.pendingLink = nil } }),
+               presenting: store.pendingLink) { url in
+            Button("Open link") { UIApplication.shared.open(url) }
+            Button("Trust \(url.host ?? "")") {
+                let list = store.me?.prefs.trusted_domains ?? []
+                store.saveSettings(["trusted_domains": Array(Set(list + [host(url)]))])
+                UIApplication.shared.open(url)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { url in Text("This link goes to \(host(url))\n\n\(url.absoluteString.prefix(300))") }
+        .onChange(of: store.pendingLink) { u in
+            // trusted sites (and ours) open without asking
+            if let u, trusted(u) { store.pendingLink = nil; UIApplication.shared.open(u) }
+        }
         .task {
             await store.start()
+            if store.me?.onboarded == false && store.me?.is_bot != true { welcome = true }
+            if let l = links { openLink(l) }
             // test builds: -jaceOpen dm:<uuid>:<title>, ch:<id>:<title> or server:<id>:<name> opens that (CI screenshots)
             #if DEBUG
             if let open = UserDefaults.standard.string(forKey: "jaceOpen") {
                 let parts = open.split(separator: ":", maxSplits: 2).map(String.init)
                 if parts.count == 3 {
-                    if parts[0] == "server" { tab = 1; serverPath.append(ServerRoute(id: parts[1], name: parts[2])) }
-                    else { chatPath.append(ChatRoute(target: parts[0] == "dm" ? .direct(parts[1]) : .channel(parts[1]), title: parts[2])) }
+                    switch parts[0] {
+                    case "server": router.open(tab: 1, .server(parts[1], parts[2]))
+                    case "dm": router.go(.chat(.direct(parts[1]), parts[2]))
+                    case "you": router.open(tab: 2, .settings(parts[1]))
+                    case "profile": router.go(.profile(parts[1], nil))
+                    case "serversettings": router.open(tab: 1, .serverSettings(parts[1]))
+                    case "bots": router.open(tab: 2, .bots)
+                    default: router.go(.chat(.channel(parts[1]), parts[2]))
+                    }
                 }
             }
             #endif
         }
+        .onOpenURL { openLink($0.absoluteString) }
         .onDisappear { store.stop() }
+    }
+
+    private func host(_ u: URL) -> String { (u.host ?? "").lowercased().replacingOccurrences(of: "www.", with: "") }
+
+    private func trusted(_ u: URL) -> Bool {
+        let s = store.me?.prefs
+        let h = host(u)
+        return s?.link_warning == false || h == "jace-social.vercel.app" || (s?.trusted_domains ?? []).contains { h == $0 || h.hasSuffix("." + $0) }
+    }
+
+    /// jacesocial://invite/<code> or https://jace-social.vercel.app/invite/<code>
+    private func openLink(_ l: String) {
+        guard let r = l.range(of: "(?:jacesocial://invite/|https://jace-social\\.vercel\\.app/invite/)([A-Za-z0-9_-]+)", options: .regularExpression) else { return }
+        router.open(tab: 1, .invite(inviteCode(String(l[r]))))
+    }
+
+    @ViewBuilder
+    private func screen(_ r: Route) -> some View {
+        switch r {
+        case .chat(let t, let title): ChatView(target: t, title: title)
+        case .server(let id, let name): ServerView(id: id, title: name)
+        case .profile(let uuid, let server): ProfileView(uuid: uuid, serverId: server)
+        case .serverSettings(let id): ServerSettingsView(id: id)
+        case .channelSettings(let s, let c): ChannelSettingsView(serverId: s, channelId: c)
+        case .group(let id): GroupSettingsView(id: id)
+        case .newGroup: NewGroupView()
+        case .addServer(let code): AddServerView(code: code)
+        case .invite(let code): InviteView(code: code)
+        case .settings(let tab): SettingsView(tab: tab)
+        case .bots: BotsView()
+        case .botCode(let id): BotCodeView(id: id)
+        case .botBlocks(let id): BotBlocksView(id: id)
+        case .botActivity(let id, let server): BotActivityView(id: id, server: server)
+        case .voice: VoiceRoomView()
+        case .welcome: WelcomeView()
+        }
     }
 }
 
-struct ChatRoute: Hashable {
-    let target: ChatTarget
-    let title: String
+/// A thin bar: an ongoing call or voice room.
+struct ActiveBar: View {
+    let text: String
+    let tap: () -> Void
+    var body: some View {
+        Button(action: tap) {
+            HStack { Text(text).bold().lineLimit(1); Spacer(); Text("Open") }
+                .foregroundStyle(JaceColor.onGreen).padding(.horizontal, 16).padding(.vertical, 10)
+                .background(JaceColor.green, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .padding(.horizontal, 12)
+    }
 }
 
-/// Your conversations: friends (direct messages) and group chats, unread first.
+/// Your conversations: friend requests, group chats and friends (direct messages), unread first.
 struct ChatsView: View {
     @EnvironmentObject var store: Store
+    @EnvironmentObject var router: Router
     @State private var adding = false
     @State private var removing: Person?
 
     var body: some View {
+        let muted = store.me?.prefs.muted ?? []
         List {
             if let e = store.error { Text(e).foregroundStyle(JaceColor.red) }
             if let f = store.friends {
@@ -99,18 +196,25 @@ struct ChatsView: View {
                 if !store.groups.isEmpty {
                     Section("Group chats") {
                         ForEach(store.groups) { g in
-                            NavigationLink(value: ChatRoute(target: .channel(g.id), title: g.name)) { GroupRow(group: g) }
+                            NavigationLink(value: Route.chat(.channel(g.id), g.name)) { GroupRow(group: g, muted: muted.contains(g.id)) }
                                 .listRowBackground(JaceColor.bg)
+                                .contextMenu {
+                                    Button { router.go(.group(g.id)) } label: { Label("Group settings", systemImage: "gear") }
+                                    Button { toggleMute(g.id) } label: { Label(muted.contains(g.id) ? "Unmute" : "Mute", systemImage: "bell.slash") }
+                                }
                         }
                     }
                 }
                 Section("Direct messages") {
                     ForEach(f.friends.sorted(by: dmOrder)) { p in
-                        NavigationLink(value: ChatRoute(target: .direct(p.uuid), title: p.shownName)) {
+                        NavigationLink(value: Route.chat(.direct(p.uuid), p.shownName)) {
                             PersonRow(person: p, line: p.online ? describe(p) : "Offline")
                         }
                         .listRowBackground(JaceColor.bg)
                         .contextMenu {
+                            Button { router.go(.profile(p.uuid, nil)) } label: { Label("Profile", systemImage: "person") }
+                            Button { store.calls.call(p.uuid, name: p.shownName) } label: { Label("Call", systemImage: "phone") }
+                            Button { toggleMute(p.uuid) } label: { Label(muted.contains(p.uuid) ? "Unmute" : "Mute", systemImage: "bell.slash") }
                             Button(role: .destructive) { removing = p } label: { Label("Remove friend", systemImage: "person.badge.minus") }
                         }
                     }
@@ -119,12 +223,12 @@ struct ChatsView: View {
                 Text("Loading…").foregroundStyle(JaceColor.muted)
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(JaceColor.bg)
+        .jaceList()
         .navigationTitle("Chats")
         .refreshable { await store.refreshAll() }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button { router.go(.newGroup) } label: { Image(systemName: "person.3") }.accessibilityLabel("New group chat")
                 Button { adding = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Add friend")
             }
         }
@@ -133,6 +237,11 @@ struct ChatsView: View {
                             titleVisibility: .visible, presenting: removing) { p in
             Button("Remove friend", role: .destructive) { store.friendAction { try await $0.removeFriend(p.uuid) } }
         } message: { _ in Text("You won't be friends any more. Your messages stay.") }
+    }
+
+    func toggleMute(_ id: String) {
+        let muted = store.me?.prefs.muted ?? []
+        store.saveSettings(["muted": muted.contains(id) ? muted.filter { $0 != id } : muted + [id]])
     }
 
     func dmOrder(_ a: Person, _ b: Person) -> Bool {
@@ -198,14 +307,16 @@ struct AddFriendView: View {
 
 struct GroupRow: View {
     let group: Group
+    var muted = false
     var body: some View {
         HStack(spacing: 12) {
-            ZStack { Circle().fill(JaceColor.panel); Text(group.name.prefix(1).uppercased()).bold() }.frame(width: 44, height: 44)
+            IconPic(name: group.name, url: group.icon_url, size: 44, round: true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.name).fontWeight(.semibold).lineLimit(1)
                 Text("\(group.members.count) members").font(.footnote).foregroundStyle(JaceColor.muted)
             }
             Spacer()
+            if muted { Image(systemName: "bell.slash").foregroundStyle(JaceColor.muted) }
             if group.unread > 0 { UnreadBadge(n: group.unread) }
         }
     }
@@ -218,48 +329,28 @@ struct UnreadBadge: View {
     }
 }
 
-/// Your servers. (Opening one, with its channels, comes in the next part.)
+/// Your servers; tap one to open it, or add one.
 struct ServersView: View {
     @EnvironmentObject var store: Store
+    @EnvironmentObject var router: Router
     var body: some View {
         List {
-            if store.servers.isEmpty { Text("You're not in any servers yet").foregroundStyle(JaceColor.muted) }
+            if store.servers.isEmpty { Text("You're not in any servers yet. Tap Add to make one or join one with an invite.").foregroundStyle(JaceColor.muted) }
             ForEach(store.servers) { s in
-                NavigationLink(value: ServerRoute(id: s.id, name: s.name)) { HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16).fill(JaceColor.panel)
-                        Text(s.name.split(separator: " ").compactMap { $0.first }.prefix(2).map(String.init).joined()).bold()
+                NavigationLink(value: Route.server(s.id, s.name)) {
+                    HStack(spacing: 12) {
+                        IconPic(name: s.name, url: s.icon_url)
+                        Text(s.name).fontWeight(.semibold)
+                        Spacer()
+                        if s.unread > 0 { UnreadBadge(n: s.unread) }
                     }
-                    .frame(width: 48, height: 48)
-                    Text(s.name).fontWeight(.semibold)
-                    Spacer()
-                    if s.unread > 0 { UnreadBadge(n: s.unread) }
-                } }
+                }
                 .listRowBackground(JaceColor.bg)
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(JaceColor.bg)
+        .jaceList()
         .navigationTitle("Servers")
-    }
-}
-
-/// You: your profile and status. (Settings and editing come later.)
-struct YouView: View {
-    @EnvironmentObject var store: Store
-    @EnvironmentObject var session: Session
-    var body: some View {
-        VStack(spacing: 10) {
-            if let m = store.me {
-                Avatar(person: Person(uuid: m.uuid, name: m.name, online: true, status: m.status, avatar_url: m.avatar_url), size: 88)
-                Text(m.display_name ?? m.name).font(.title2.bold())
-            }
-            Button("Sign out") { Task { store.stop(); await session.signOut() } }.buttonStyle(.bordered)
-            Spacer()
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity)
-        .background(JaceColor.bg)
-        .navigationTitle("You")
+        .refreshable { await store.refreshServers() }
+        .toolbar { ToolbarItem(placement: .primaryAction) { Button("Add") { router.go(.addServer("")) } } }
     }
 }

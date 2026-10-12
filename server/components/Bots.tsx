@@ -8,7 +8,7 @@ import { rememberAccount, switchAccount } from "@/lib/accounts";
 import { compile, darkTheme, defineBlocks, STARTER, TOOLBOX } from "@/lib/botblocks";
 import { Avatar, Modal } from "./ui";
 
-type Bot = Person & { bot_public: boolean; bot_enabled: boolean; has_program: boolean; has_code?: boolean };
+export type Bot = Person & { bot_public: boolean; bot_enabled: boolean; has_program: boolean; has_code?: boolean };
 type Err = (m: string) => void;
 
 export function MyBots({ onError }: { onError: Err }) {
@@ -108,8 +108,9 @@ export function MyBots({ onError }: { onError: Err }) {
   </>;
 }
 
-/** The block editor (Blockly with the Scratch-like "zelos" look). */
-function BotEditor({ bot, onClose, onError }: { bot: Bot; onClose: () => void; onError: Err }) {
+/** The block editor (Blockly with the Scratch-like "zelos" look). Also its own page, /bot-blocks,
+ *  which the native phone apps open in a web view (Blockly has no native version). */
+export function BotEditor({ bot, onClose, onError }: { bot: Bot; onClose: () => void; onError: Err }) {
   const div = useRef<HTMLDivElement>(null);
   const ws = useRef<import("blockly/core").WorkspaceSvg | null>(null);
   const [status, setStatus] = useState("Loading the editor…");

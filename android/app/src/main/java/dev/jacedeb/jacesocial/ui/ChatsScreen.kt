@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -62,12 +63,18 @@ fun ChatsScreen(store: Store, open: (ChatTarget, String) -> Unit) {
     val friends by store.friends.collectAsState()
     val groups by store.groups.collectAsState()
     val error by store.error.collectAsState()
+    val nav = LocalNav.current
+    val me by store.me.collectAsState()
+    val muted = me?.settings?.muted ?: emptyList()
     Column(Modifier.fillMaxSize()) {
         var adding by remember { mutableStateOf(false) }
         var removing by remember { mutableStateOf<Person?>(null) }
         var menuFor by remember { mutableStateOf<String?>(null) }
         TopAppBar(title = { Text("Chats", fontWeight = FontWeight.Bold) },
-            actions = { IconButton(onClick = { adding = true }) { Icon(Icons.Filled.PersonAdd, "Add friend") } })
+            actions = {
+                IconButton(onClick = { nav.go("new-group") }) { Icon(Icons.Filled.GroupAdd, "New group chat") }
+                IconButton(onClick = { adding = true }) { Icon(Icons.Filled.PersonAdd, "Add friend") }
+            })
         if (adding) AddFriendDialog(store) { adding = false }
         removing?.let { p ->
             AlertDialog(onDismissRequest = { removing = null },
@@ -103,7 +110,18 @@ fun ChatsScreen(store: Store, open: (ChatTarget, String) -> Unit) {
                 }
                 if (groups.isNotEmpty()) {
                     item { SectionTitle("Group chats") }
-                    items(groups, key = { "g" + it.id }) { g -> GroupRow(g) { open(ChatTarget.Channel(g.id), g.name) } }
+                    items(groups, key = { "g" + it.id }) { g ->
+                        Box(Modifier.fillMaxWidth().combinedClickable(onLongClick = { menuFor = g.id }) { open(ChatTarget.Channel(g.id), g.name) }) {
+                            GroupRow(g, muted.contains(g.id))
+                            DropdownMenu(expanded = menuFor == g.id, onDismissRequest = { menuFor = null }) {
+                                DropdownMenuItem(text = { Text("Group settings") }, onClick = { menuFor = null; nav.go("group/${g.id}") })
+                                DropdownMenuItem(text = { Text(if (muted.contains(g.id)) "Unmute" else "Mute") }, onClick = {
+                                    menuFor = null
+                                    store.saveSettings(dev.jacedeb.jacesocial.data.jo("muted" to if (muted.contains(g.id)) muted - g.id else muted + g.id))
+                                })
+                            }
+                        }
+                    }
                 }
                 item { SectionTitle("Direct messages") }
                 val sorted = f.friends.sortedWith(compareByDescending<Person> { it.unread }
@@ -113,6 +131,12 @@ fun ChatsScreen(store: Store, open: (ChatTarget, String) -> Unit) {
                         PersonRow(p, if (p.online) describe(p) else "Offline")
                         DropdownMenu(expanded = menuFor == p.uuid, onDismissRequest = { menuFor = null }) {
                             DropdownMenuItem(text = { Text("Message") }, onClick = { menuFor = null; open(ChatTarget.Direct(p.uuid), p.shownName) })
+                            DropdownMenuItem(text = { Text("Profile") }, onClick = { menuFor = null; nav.profile(p.uuid) })
+                            DropdownMenuItem(text = { Text("Call") }, onClick = { menuFor = null; nav.withMic { store.calls.call(p.uuid, p.shownName) } })
+                            DropdownMenuItem(text = { Text(if (muted.contains(p.uuid)) "Unmute" else "Mute") }, onClick = {
+                                menuFor = null
+                                store.saveSettings(dev.jacedeb.jacesocial.data.jo("muted" to if (muted.contains(p.uuid)) muted - p.uuid else muted + p.uuid))
+                            })
                             DropdownMenuItem(text = { Text("Remove friend", color = JaceColors.red) }, onClick = { menuFor = null; removing = p })
                         }
                     }
@@ -163,17 +187,16 @@ fun AddFriendDialog(store: Store, onDone: () -> Unit) {
 }
 
 @Composable
-fun GroupRow(g: Group, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+fun GroupRow(g: Group, muted: Boolean = false) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(44.dp).clip(CircleShape).background(JaceColors.panel), contentAlignment = Alignment.Center) {
-            Text(g.name.take(1).uppercase(), fontWeight = FontWeight.Bold)
-        }
+        IconPic(g.name, g.icon_url, 44, CircleShape)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(g.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("${g.members.size} members", color = JaceColors.muted, style = MaterialTheme.typography.bodySmall)
         }
+        if (muted) Text("🔕 ")
         if (g.unread > 0) UnreadBadge(g.unread)
     }
 }

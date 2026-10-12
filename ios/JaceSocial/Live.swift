@@ -7,6 +7,8 @@ struct LiveEvent {
     let event: String
     let payload: [String: Any]
     func str(_ key: String) -> String? { payload[key] as? String }
+    func int(_ key: String) -> Int? { (payload[key] as? NSNumber)?.intValue ?? (payload[key] as? String).flatMap { Int($0) } }
+    func bool(_ key: String) -> Bool { (payload[key] as? NSNumber)?.boolValue ?? false }
 }
 
 /// Supabase Realtime over a websocket (the Phoenix protocol, like Jace Launcher's social_live.py):

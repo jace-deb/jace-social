@@ -68,7 +68,7 @@ struct SignInView: View {
             code = dc
             busy = "Waiting for you to enter the code…"
             while true {
-                try await Task.sleep(nanoseconds: UInt64(dc.interval) * 1_000_000_000)
+                try await Task.sleep(nanoseconds: UInt64(dc.interval ?? 5) * 1_000_000_000)
                 if let s = try await session.api.pollMinecraft(dc.ticket) {
                     browser = nil
                     session.signedIn(s)

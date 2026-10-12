@@ -29,7 +29,9 @@ def person(uuid, name, **extra):
 PEOPLE = {
     ME: person(ME, "jace_deb", custom_status="building", status_emoji="🔨"),
     STEVE: person(STEVE, "Steve", activity={"type": "playing", "version": "1.21.1", "loader": "fabric",
-                                            "server": "play.example.net"}, unread=2),
+                                            "server": "play.example.net"}, unread=2,
+                   bio="Builder of castles and very long bridges.", pronouns="he/him", accent_color="#4f8fd6",
+                   links=[{"label": "My builds", "url": "https://example.net/builds"}]),
     ALEX: person(ALEX, "Alex", status="idle"),
     ZED: person(ZED, "Zed", online=False, status="offline"),
     BOT: person(BOT, "Jace", is_bot=True, avatar_url=None, minecraft_name=None),
@@ -91,6 +93,16 @@ FIXTURES = {
                             "members": [PEOPLE[ME], PEOPLE[STEVE], PEOPLE[ALEX]], "unread": 1, "last_message_at": at(15)}]},
     "/servers": {"servers": [{"id": SID, "name": "Jace Craft", "icon_url": None, "role": "owner", "unread": 2}]},
     f"/servers/{SID}": SERVER,
+    "/bots": {"bots": [dict(PEOPLE[BOT], uuid="0" * 31 + "b", name="Helper", bio="Says hi and counts", bot_public=False, bot_enabled=True,
+                            has_program=False, has_code=True, bot_commands=[])]},
+    "/bots/directory": {"bots": [dict(PEOPLE[BOT], official=True, bio="The official Jace bot")]},
+    f"/channels/{GENERAL}/commands": {"commands": [{"bot": BOT, "bot_name": "Jace", "avatar_url": None, "name": "roll",
+                                                    "description": "Roll a die", "options": []}]},
+    f"/channels/{GENERAL}/pins": {"messages": [], "people": {}},
+    f"/servers/{SID}/bans": {"bans": []},
+    "/calls/ice": {"ice_servers": [{"urls": "stun:stun.l.google.com:19302"}], "relay": False},
+    # the same version as the test build, so no update prompt covers the screenshots
+    "/releases/mobile": {"version": "2.0.0", "notes": "", "page": "https://github.com/jace-deb/jace-social/releases", "downloads": []},
 }
 next_id = [100]
 
@@ -135,7 +147,15 @@ class Handler(BaseHTTPRequestHandler):
                                                    reply_to=body.get("reply_to"))})
         if path.startswith("/users/"):
             uid = path.split("/")[2]
-            return self.reply(200, dict(PEOPLE.get(uid, PEOPLE[ZED]), is_friend=True, is_you=uid == ME, mutual_servers=[]))
+            return self.reply(200, dict(PEOPLE.get(uid, PEOPLE[ZED]), is_friend=uid != ME, is_you=uid == ME,
+                                        mutual_servers=[{"id": SID, "name": "Jace Craft", "icon_url": None}]))
+        if path.startswith("/bots/") and method == "GET":
+            return self.reply(200, {"bot": FIXTURES["/bots"]["bots"][0], "owner": PEOPLE[ME], "commands": [], "official": False,
+                                    "program": None, "code": "bot.on(\"message\", (msg) => {\n  if (msg.text === \"hi bot\") msg.reply(\"Hi!\");\n});\n"})
+        if method == "GET" and path.startswith("/channels/") and path.endswith("/commands"):
+            return self.reply(200, {"commands": []})
+        if method == "GET" and path.startswith("/channels/") and path.endswith("/pins"):
+            return self.reply(200, {"messages": [], "people": {}})
         if method != "GET":
             return self.reply(200, {"ok": True})               # anything else that changes something: fine
         return self.reply(404, {"error": f"The mock API doesn't know {path}"})

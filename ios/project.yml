@@ -5,6 +5,10 @@ options:
   bundleIdPrefix: dev.jacedeb
   deploymentTarget:
     iOS: "16.0"
+packages:
+  WebRTC:                       # calls and voice rooms (Google's WebRTC, built as a Swift package)
+    url: https://github.com/stasel/WebRTC
+    exactVersion: 153.0.0
 settings:
   base:
     MARKETING_VERSION: "2.0.0"
@@ -15,6 +19,8 @@ targets:
     type: application
     platform: iOS
     sources: [JaceSocial]
+    dependencies:
+      - package: WebRTC
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.jacedeb.jacesocial

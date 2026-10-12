@@ -34,15 +34,14 @@ import dev.jacedeb.jacesocial.data.Store
 fun ServersScreen(store: Store, open: (id: String, name: String) -> Unit) {
     val servers by store.servers.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Servers", fontWeight = FontWeight.Bold) })
+        val nav = LocalNav.current
+        TopAppBar(title = { Text("Servers", fontWeight = FontWeight.Bold) },
+            actions = { androidx.compose.material3.TextButton(onClick = { nav.go("add-server") }) { Text("＋ Add") } })
         LazyColumn {
-            if (servers.isEmpty()) item { Text("You're not in any servers yet", color = JaceColors.muted, modifier = Modifier.padding(16.dp)) }
+            if (servers.isEmpty()) item { Text("You're not in any servers yet. Tap ＋ Add to make one or join one with an invite.", color = JaceColors.muted, modifier = Modifier.padding(16.dp)) }
             items(servers, key = { it.id }) { s ->
                 Row(Modifier.fillMaxWidth().clickable { open(s.id, s.name) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(JaceColors.panel), contentAlignment = Alignment.Center) {
-                        if (s.icon_url != null) AsyncImage(s.icon_url, s.name, Modifier.fillMaxSize())
-                        else Text(s.name.split(" ").mapNotNull { it.firstOrNull() }.take(2).joinToString(""), fontWeight = FontWeight.Bold)
-                    }
+                    IconPic(s.name, s.icon_url, 48)
                     Spacer(Modifier.width(12.dp))
                     Text(s.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     if (s.unread > 0) UnreadBadge(s.unread)
