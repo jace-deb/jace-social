@@ -215,14 +215,7 @@ struct MessageRow: View {
                         (Text(rich(message.body, who: who)) + Text(message.edited_at != nil ? " (edited)" : "").foregroundColor(JaceColor.muted))
                             .tint(JaceColor.green)
                     }
-                    ForEach(message.attachments ?? [], id: \.self) { a in
-                        if a.type.hasPrefix("image/"), let u = URL(string: a.url) {
-                            AsyncImage(url: u) { $0.resizable().scaledToFit() } placeholder: { JaceColor.panel }
-                                .frame(maxWidth: 260, maxHeight: 260).clipShape(RoundedRectangle(cornerRadius: 8))
-                        } else if let u = URL(string: a.url) {
-                            Link("📎 \(a.name)", destination: u).foregroundStyle(JaceColor.green)
-                        }
-                    }
+                    ForEach(message.attachments ?? [], id: \.self) { AttachmentView(attachment: $0) }
                     ForEach(message.embeds ?? [], id: \.self) { e in
                         if e.title != nil || e.description != nil {
                             VStack(alignment: .leading, spacing: 2) {
@@ -257,6 +250,26 @@ struct MessageRow: View {
                     Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
                     Button(role: .destructive) { onDelete() } label: { Label("Delete", systemImage: "trash") }
                 }
+            }
+        }
+    }
+}
+
+struct AttachmentView: View {
+    let attachment: Attachment
+
+    var body: some View {
+        if let u = URL(string: attachment.url) {
+            if attachment.type.hasPrefix("image/") {
+                AsyncImage(url: u) { (image: Image) in
+                    image.resizable().scaledToFit()
+                } placeholder: {
+                    JaceColor.panel
+                }
+                .frame(maxWidth: 260, maxHeight: 260)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Link("📎 \(attachment.name)", destination: u).foregroundStyle(JaceColor.green)
             }
         }
     }
