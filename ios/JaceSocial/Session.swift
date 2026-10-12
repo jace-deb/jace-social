@@ -8,6 +8,11 @@ final class Session: ObservableObject {
 
     init() {
         token = Keychain.read()
+        // test builds: -jaceToken <t> signs in with that token (CI screenshots with native-test/mock_api.py).
+        // Not through the Keychain: CI's unsigned simulator builds can't use it.
+        #if DEBUG
+        if let t = UserDefaults.standard.string(forKey: "jaceToken") { token = t }
+        #endif
     }
 
     func signedIn(_ s: SignedIn) {

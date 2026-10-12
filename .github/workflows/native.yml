@@ -117,7 +117,7 @@ jobs:
           sleep 10
           xcrun simctl io "$DEVICE" screenshot ../ios-chats.png
           xcrun simctl terminate "$DEVICE" dev.jacedeb.jacesocial
-          SIMCTL_CHILD_JACE_API_BASE=http://localhost:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceOpen dm:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:Steve
+          SIMCTL_CHILD_JACE_API_BASE=http://localhost:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo -jaceOpen dm:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:Steve
           sleep 10
           xcrun simctl io "$DEVICE" screenshot ../ios-chat.png
           tail -30 ../mock.log
