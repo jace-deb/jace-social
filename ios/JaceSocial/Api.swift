@@ -36,6 +36,9 @@ final class Api {
         do {
             (data, response) = try await URLSession.shared.data(for: req)
         } catch {
+            #if DEBUG
+            print("Jace API \(method) \(path) failed: \(error)")
+            #endif
             throw ApiError(status: 0, message: "Can't reach Jace Social - check your internet connection")
         }
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0

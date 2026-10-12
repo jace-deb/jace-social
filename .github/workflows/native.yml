@@ -113,14 +113,15 @@ jobs:
           # signed in, against the fake API
           python3 ../native-test/mock_api.py 8787 > ../mock.log 2>&1 &
           xcrun simctl terminate "$DEVICE" dev.jacedeb.jacesocial
-          SIMCTL_CHILD_JACE_API_BASE=http://localhost:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo
-          sleep 10
+          SIMCTL_CHILD_JACE_API_BASE=http://127.0.0.1:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo
+          sleep 25
           xcrun simctl io "$DEVICE" screenshot ../ios-chats.png
           xcrun simctl terminate "$DEVICE" dev.jacedeb.jacesocial
-          SIMCTL_CHILD_JACE_API_BASE=http://localhost:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo -jaceOpen dm:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:Steve
-          sleep 10
+          SIMCTL_CHILD_JACE_API_BASE=http://127.0.0.1:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo -jaceOpen dm:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:Steve
+          sleep 25
           xcrun simctl io "$DEVICE" screenshot ../ios-chat.png
           tail -30 ../mock.log
+          xcrun simctl spawn "$DEVICE" log show --last 3m --style compact --predicate 'process == "Jace Social"' | grep -iE "jace api|error|fail|ats|transport" | tail -40 || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:
