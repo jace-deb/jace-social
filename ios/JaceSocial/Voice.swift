@@ -25,7 +25,7 @@ struct RoomState: Equatable {
 /// something at once, the smaller id gives way. See server/lib/voice.ts.
 @MainActor
 final class Voice: NSObject, ObservableObject {
-    private final class Peer {
+    fileprivate final class Peer {
         let uuid: String
         var pc: RTCPeerConnection!
         var audio: RTCAudioTrack?
