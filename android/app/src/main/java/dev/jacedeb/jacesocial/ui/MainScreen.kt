@@ -48,7 +48,13 @@ fun MainScreen(session: Session, store: Store, startAt: String? = null) {
     }) { pad ->
         NavHost(nav, startDestination = "chats", modifier = Modifier.padding(pad)) {
             composable("chats") { ChatsScreen(store, ::openChat) }
-            composable("servers") { ServersScreen(store, ::openChat) }
+            composable("servers") { ServersScreen(store) { id, name -> nav.navigate("server/$id?title=${URLEncoder.encode(name, "UTF-8")}") } }
+            composable("server/{id}?title={title}", arguments = listOf(
+                navArgument("id") { type = NavType.StringType },
+                navArgument("title") { type = NavType.StringType; defaultValue = "" })) { e ->
+                ServerScreen(session, store, e.arguments!!.getString("id")!!, e.arguments!!.getString("title") ?: "", ::openChat,
+                    onBack = { nav.popBackStack() })
+            }
             composable("you") { YouScreen(session, store) }
             composable("chat/{kind}/{id}?title={title}", arguments = listOf(
                 navArgument("kind") { type = NavType.StringType }, navArgument("id") { type = NavType.StringType },

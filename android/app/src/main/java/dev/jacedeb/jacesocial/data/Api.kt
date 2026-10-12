@@ -72,6 +72,7 @@ class Api(private val token: () -> String?) {
     // --- chats (direct messages, group chats and server channels share these)
     suspend fun groups(): GroupsData = get("/groups")
     suspend fun servers(): ServersData = get("/servers")
+    suspend fun server(id: String): ServerDetail = get("/servers/$id")
 
     suspend fun messages(t: ChatTarget, before: Long? = null): MessagesPage = when (t) {
         is ChatTarget.Direct -> get("/messages?with=${t.uuid}" + (before?.let { "&before=$it" } ?: ""))

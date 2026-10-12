@@ -72,6 +72,9 @@ jobs:
             adb shell "am start -S -n dev.jacedeb.jacesocial/.MainActivity --es jace_open 'chat/dm/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb?title=Steve'"
             sleep 10
             adb exec-out screencap -p > android-chat.png
+            adb shell "am start -S -n dev.jacedeb.jacesocial/.MainActivity --es jace_open 'server/22222222-2222-2222-2222-222222222222?title=Jace%20Craft'"
+            sleep 10
+            adb exec-out screencap -p > android-server.png
             adb shell pidof dev.jacedeb.jacesocial
             adb logcat -d -s AndroidRuntime:E | tail -40
       - name: What the fake API was asked
@@ -123,6 +126,10 @@ jobs:
           SIMCTL_CHILD_JACE_API_BASE=http://127.0.0.1:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo -jaceOpen dm:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:Steve
           sleep 25
           xcrun simctl io "$DEVICE" screenshot ../ios-chat.png
+          xcrun simctl terminate "$DEVICE" dev.jacedeb.jacesocial
+          SIMCTL_CHILD_JACE_API_BASE=http://127.0.0.1:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo -jaceOpen "server:22222222-2222-2222-2222-222222222222:Jace Craft"
+          sleep 20
+          xcrun simctl io "$DEVICE" screenshot ../ios-server.png
           tail -30 ../mock.log
           xcrun simctl spawn "$DEVICE" log show --last 3m --style compact --predicate 'process == "Jace Social"' | grep -iE "jace api|error|fail|ats|transport" | tail -40 || true
       - uses: actions/upload-artifact@v7

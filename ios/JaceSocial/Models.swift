@@ -165,3 +165,54 @@ enum ChatTarget: Hashable {
         }
     }
 }
+
+struct ServerInfo: Codable, Hashable {
+    var id: String
+    var name: String = ""
+    var icon_url: String?
+    var description: String?
+    var banner_url: String?
+    var accent_color: String?
+    var invite_code: String?
+    var vanity: String?
+}
+
+/// A channel in a server: text, announcement, voice, or a category that holds others (parent_id).
+struct Channel: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String = ""
+    var topic: String?
+    var kind: String = "text"
+    var parent_id: String?
+    var position: Int = 0
+    var unread: Int?
+}
+
+struct Role: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String = ""
+    var color: String?
+    var icon: String?
+    var position: Int = 0
+    var hoist: Bool?
+    var is_default: Bool?
+}
+
+/// Someone in a voice channel right now.
+struct VoiceState: Codable, Hashable {
+    var channel_id: String
+    var uuid: String
+    var muted: Bool?
+    var deafened: Bool?
+    var streaming: Bool?
+}
+
+/// GET /servers/{id}: the server, the channels you can see, roles, members, who's in voice.
+struct ServerDetail: Codable {
+    var server: ServerInfo
+    var owner: Bool?
+    var roles: [Role]?
+    var channels: [Channel] = []
+    var members: [Person] = []
+    var voice: [VoiceState]?
+}

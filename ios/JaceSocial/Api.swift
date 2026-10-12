@@ -77,6 +77,7 @@ final class Api {
     // --- chats (direct messages, group chats and server channels share these)
     func groups() async throws -> [Group] { (try await get("/groups") as GroupsData).groups }
     func servers() async throws -> [ServerItem] { (try await get("/servers") as ServersData).servers }
+    func server(_ id: String) async throws -> ServerDetail { try await get("/servers/\(id)") }
 
     func messages(_ t: ChatTarget, before: Int? = nil) async throws -> MessagesPage {
         switch t {

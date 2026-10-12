@@ -5,32 +5,42 @@ struct MainView: View {
     @EnvironmentObject var session: Session
     @StateObject private var store: Store
     @State private var chatPath = NavigationPath()
+    @State private var serverPath = NavigationPath()
+    @State private var tab = 0
 
     init(session: Session) {
         _store = StateObject(wrappedValue: Store(session: session))
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             NavigationStack(path: $chatPath) {
                 ChatsView()
                     .navigationDestination(for: ChatRoute.self) { r in ChatView(target: r.target, title: r.title) }
             }
             .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
-            NavigationStack { ServersView() }
-                .tabItem { Label("Servers", systemImage: "server.rack") }
+            .tag(0)
+            NavigationStack(path: $serverPath) {
+                ServersView()
+                    .navigationDestination(for: ServerRoute.self) { r in ServerView(id: r.id, title: r.name) }
+                    .navigationDestination(for: ChatRoute.self) { r in ChatView(target: r.target, title: r.title) }
+            }
+            .tabItem { Label("Servers", systemImage: "server.rack") }
+            .tag(1)
             NavigationStack { YouView() }
                 .tabItem { Label("You", systemImage: "person.crop.circle") }
+                .tag(2)
         }
         .environmentObject(store)
         .task {
             await store.start()
-            // test builds: -jaceOpen dm:<uuid>:<title> or ch:<id>:<title> opens a chat (CI screenshots)
+            // test builds: -jaceOpen dm:<uuid>:<title>, ch:<id>:<title> or server:<id>:<name> opens that (CI screenshots)
             #if DEBUG
             if let open = UserDefaults.standard.string(forKey: "jaceOpen") {
                 let parts = open.split(separator: ":", maxSplits: 2).map(String.init)
                 if parts.count == 3 {
-                    chatPath.append(ChatRoute(target: parts[0] == "dm" ? .direct(parts[1]) : .channel(parts[1]), title: parts[2]))
+                    if parts[0] == "server" { tab = 1; serverPath.append(ServerRoute(id: parts[1], name: parts[2])) }
+                    else { chatPath.append(ChatRoute(target: parts[0] == "dm" ? .direct(parts[1]) : .channel(parts[1]), title: parts[2])) }
                 }
             }
             #endif
@@ -119,7 +129,7 @@ struct ServersView: View {
         List {
             if store.servers.isEmpty { Text("You're not in any servers yet").foregroundStyle(JaceColor.muted) }
             ForEach(store.servers) { s in
-                HStack(spacing: 12) {
+                NavigationLink(value: ServerRoute(id: s.id, name: s.name)) { HStack(spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 16).fill(JaceColor.panel)
                         Text(s.name.split(separator: " ").compactMap { $0.first }.prefix(2).map(String.init).joined()).bold()
@@ -128,7 +138,7 @@ struct ServersView: View {
                     Text(s.name).fontWeight(.semibold)
                     Spacer()
                     if s.unread > 0 { UnreadBadge(n: s.unread) }
-                }
+                } }
                 .listRowBackground(JaceColor.bg)
             }
         }

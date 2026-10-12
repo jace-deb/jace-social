@@ -26,20 +26,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import dev.jacedeb.jacesocial.data.ChatTarget
 import dev.jacedeb.jacesocial.data.Store
 
-/** Your servers. (Opening one, with its channels, comes in the next part.) */
+/** Your servers; tap one to open it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ServersScreen(store: Store, open: (ChatTarget, String) -> Unit) {
+fun ServersScreen(store: Store, open: (id: String, name: String) -> Unit) {
     val servers by store.servers.collectAsState()
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Servers", fontWeight = FontWeight.Bold) })
         LazyColumn {
             if (servers.isEmpty()) item { Text("You're not in any servers yet", color = JaceColors.muted, modifier = Modifier.padding(16.dp)) }
             items(servers, key = { it.id }) { s ->
-                Row(Modifier.fillMaxWidth().clickable { }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().clickable { open(s.id, s.name) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(JaceColors.panel), contentAlignment = Alignment.Center) {
                         if (s.icon_url != null) AsyncImage(s.icon_url, s.name, Modifier.fillMaxSize())
                         else Text(s.name.split(" ").mapNotNull { it.firstOrNull() }.take(2).joinToString(""), fontWeight = FontWeight.Bold)

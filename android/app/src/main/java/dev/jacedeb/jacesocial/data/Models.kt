@@ -164,3 +164,28 @@ sealed class ChatTarget {
     data class Direct(val uuid: String) : ChatTarget() { override val key = "dm:$uuid" }
     data class Channel(val id: String) : ChatTarget() { override val key = "ch:$id" }
 }
+
+@Serializable
+data class ServerInfo(val id: String, val name: String = "", val icon_url: String? = null, val description: String? = null,
+                      val banner_url: String? = null, val accent_color: String? = null, val invite_code: String? = null,
+                      val vanity: String? = null)
+
+/** A channel in a server: text, announcement, voice, or a category that holds others (parent_id). */
+@Serializable
+data class Channel(val id: String, val name: String = "", val topic: String? = null, val kind: String = "text",
+                   val parent_id: String? = null, val position: Int = 0, val unread: Int = 0, val perms: Long? = null)
+
+@Serializable
+data class Role(val id: String, val name: String = "", val color: String? = null, val icon: String? = null,
+                val position: Int = 0, val hoist: Boolean = false, val is_default: Boolean = false)
+
+/** Someone in a voice channel right now. */
+@Serializable
+data class VoiceState(val channel_id: String, val uuid: String, val muted: Boolean = false, val deafened: Boolean = false,
+                      val streaming: Boolean = false)
+
+/** GET /servers/{id}: the server, the channels you can see, roles, members, who's in voice. */
+@Serializable
+data class ServerDetail(val server: ServerInfo, val perms: Long = 0, val owner: Boolean = false, val roles: List<Role> = emptyList(),
+                        val channels: List<Channel> = emptyList(), val members: List<Person> = emptyList(),
+                        val voice: List<VoiceState> = emptyList(), val onboarded: Boolean = true)
