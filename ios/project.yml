@@ -1,0 +1,38 @@
+# Jace Social for iPhone, native (Swift + SwiftUI). See docs/native-apps.md.
+# `xcodegen` turns this into JaceSocial.xcodeproj (on a Mac; CI does it on GitHub's).
+name: JaceSocial
+options:
+  bundleIdPrefix: dev.jacedeb
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "20000"
+    SWIFT_VERSION: "5.0"
+targets:
+  JaceSocial:
+    type: application
+    platform: iOS
+    sources: [JaceSocial]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.jacedeb.jacesocial
+        PRODUCT_NAME: Jace Social
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Jace Social
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Jace Social uses the microphone for voice calls and voice channels.
+        INFOPLIST_KEY_NSCameraUsageDescription: Jace Social uses the camera when you turn it on in a call.
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Jace Social lets you pick photos to send in chat.
+    info:
+      path: JaceSocial/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.jacedeb.jacesocial
+            CFBundleURLSchemes: [jacesocial]
+        UIBackgroundModes: [audio, voip]

@@ -7,6 +7,7 @@
 #   desktop app (app/) Windows, macOS and Linux builds, each installed, updated and uninstalled
 #   mod (mod/)         every Minecraft version and loader, each started in the real game
 #   phone apps         Android (and run on an emulator) and iPhone builds
+#   native apps        ios/ and android/, the native rewrite (built and started, not published yet)
 #   site/              the old GitHub Pages address (it only redirects)
 #
 # Releasing is automatic: when a part's version (app/jace_social_app/__init__.py,
@@ -45,6 +46,7 @@ jobs:
       phone: ${{ steps.plan.outputs.phone }}
       phone_release: ${{ steps.plan.outputs.phone_release }}
       phone_tag: ${{ steps.plan.outputs.phone_tag }}
+      native: ${{ steps.plan.outputs.native }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -80,6 +82,7 @@ jobs:
           part mod "$(sed -n 's/^mod.version = "\(.*\)"/\1/p' mod/stonecutter.properties.toml)" mod-v mod/ .github/workflows/mod.yml
           part phone "$(node -p "require('./mobile/package.json').version")" mobile-v mobile/ .github/workflows/mobile.yml
           touched server/ && echo "website=true" >> "$GITHUB_OUTPUT" || echo "website=false" >> "$GITHUB_OUTPUT"
+          touched ios/ android/ .github/workflows/native.yml && echo "native=true" >> "$GITHUB_OUTPUT" || echo "native=false" >> "$GITHUB_OUTPUT"
           touched site/ && echo "site=true" >> "$GITHUB_OUTPUT" || echo "site=false" >> "$GITHUB_OUTPUT"
 
   website:
@@ -124,6 +127,12 @@ jobs:
       release: ${{ needs.plan.outputs.phone_release == 'true' && github.ref == 'refs/heads/main' }}
       tag: ${{ needs.plan.outputs.phone_tag }}
     secrets: inherit
+
+  native:
+    # the native phone apps (ios/, android/): built and tried, not published yet
+    needs: plan
+    if: needs.plan.outputs.native == 'true'
+    uses: ./.github/workflows/native.yml
 
   site:
     # site/ is the old GitHub Pages address (jace-deb.github.io/jace-social); it redirects to the website
