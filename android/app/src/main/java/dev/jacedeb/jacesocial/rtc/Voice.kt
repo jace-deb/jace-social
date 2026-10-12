@@ -58,7 +58,7 @@ class Voice(private val api: Api, private val onError: (String) -> Unit, private
 
     private fun set(f: (RoomState) -> RoomState) { _state.value = f(_state.value) }
 
-    fun join(myUuid: String, channelId: String, serverId: String?, channelName: String) = scope.launch {
+    fun join(myUuid: String, channelId: String, serverId: String?, channelName: String): Job = scope.launch {
         if (_state.value.channelId == channelId) return@launch
         if (_state.value.channelId != null) leaveNow()
         me = myUuid
@@ -80,7 +80,7 @@ class Voice(private val api: Api, private val onError: (String) -> Unit, private
         }
     }
 
-    fun leave() = scope.launch { leaveNow() }
+    fun leave(): Job = scope.launch { leaveNow() }
 
     private suspend fun leaveNow() {
         val id = _state.value.channelId
@@ -95,14 +95,14 @@ class Voice(private val api: Api, private val onError: (String) -> Unit, private
         if (id != null) api.voiceLeave(id)
     }
 
-    fun toggleMute() = scope.launch {
+    fun toggleMute(): Job = scope.launch {
         val muted = !_state.value.muted
         mic?.setEnabled(!muted && !_state.value.deafened)
         set { it.copy(muted = muted) }
         sendState(muted = muted)
     }
 
-    fun toggleDeafen() = scope.launch {
+    fun toggleDeafen(): Job = scope.launch {
         val deafened = !_state.value.deafened
         for (p in peers.values) p.audio?.setEnabled(!deafened)
         mic?.setEnabled(!deafened && !_state.value.muted)
@@ -117,7 +117,7 @@ class Voice(private val api: Api, private val onError: (String) -> Unit, private
     }
 
     /** Turn your camera on or off for everyone in the room. */
-    fun toggleCamera() = scope.launch {
+    fun toggleCamera(): Job = scope.launch {
         if (_state.value.channelId == null) return@launch
         val c = cam
         if (c != null) {
@@ -133,7 +133,7 @@ class Voice(private val api: Api, private val onError: (String) -> Unit, private
     }
 
     /** Share your screen (permission = the system's screen capture consent), or stop. */
-    fun toggleScreen(permission: Intent?) = scope.launch {
+    fun toggleScreen(permission: Intent?): Job = scope.launch {
         val s = screen
         if (s != null) {
             for ((uuid, p) in peers) { p.screenSender?.let { runCatching { p.pc.removeTrack(it) } }; p.screenSender = null; renegotiate(uuid) }
@@ -151,7 +151,7 @@ class Voice(private val api: Api, private val onError: (String) -> Unit, private
     }
 
     /** Live "voice" event: who's in the room changed. */
-    fun refresh() = scope.launch {
+    fun refresh(): Job = scope.launch {
         val id = _state.value.channelId ?: return@launch
         try {
             val participants = api.voiceRoom(id)
@@ -162,7 +162,7 @@ class Voice(private val api: Api, private val onError: (String) -> Unit, private
     }
 
     /** Live "voice_signal" event: an offer or answer from someone in the room. */
-    fun onSignal(e: LiveEvent) = scope.launch {
+    fun onSignal(e: LiveEvent): Job = scope.launch {
         if (e.str("channel_id") != _state.value.channelId) return@launch
         val from = e.str("from") ?: return@launch
         val sid = (e.payload["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: return@launch
