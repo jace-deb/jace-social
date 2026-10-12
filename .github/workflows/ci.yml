@@ -133,6 +133,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.native == 'true'
     uses: ./.github/workflows/native.yml
+    secrets: inherit           # the Android release key, for the phone test build
 
   site:
     # site/ is the old GitHub Pages address (jace-deb.github.io/jace-social); it redirects to the website

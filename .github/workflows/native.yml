@@ -36,6 +36,28 @@ jobs:
         with:
           name: native-android
           path: dist/*.apk
+      # a build to try on a real phone: the real server, signed with the release key (the same as
+      # the Capacitor app's, so it installs over it). Not published anywhere, only kept with the run.
+      - name: Release key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo "::warning::No release key: the phone test build is debug-signed"; exit 0; fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+      - name: Build the phone test (real server)
+        env:
+          JACE_ANDROID_VERSION: "2.0.0"
+        run: |
+          ./gradlew assembleRelease --no-daemon
+          mkdir -p ../test
+          cp app/build/outputs/apk/release/app-release.apk ../test/jace_social-2.0.0-test-android.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-android-phone-test
+          path: test/*.apk
 
   android-run:
     # install it on an emulator, open it and screenshot it

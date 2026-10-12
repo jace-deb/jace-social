@@ -100,7 +100,8 @@ fun ProfileScreen(uuid: String, serverId: String?) {
             if (prof.mutual_servers.isNotEmpty()) Muted("Servers you share: ${prof.mutual_servers.joinToString { it.name }}")
             if (prof.is_bot && (prof.bot_owner == me?.uuid || (d != null && member != null && P.has(d.perms, P.MANAGE_SERVER))))
                 OutlinedButton(onClick = { nav.go("bot-activity/${prof.uuid}" + if (prof.bot_owner == me?.uuid) "" else "?server=${d?.server?.id}") }) { Text("📜 See everything it does") }
-            if (!prof.is_you && !prof.is_bot) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            @OptIn(ExperimentalLayoutApi::class)
+            if (!prof.is_you && !prof.is_bot) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (prof.is_friend) {
                     Button(onClick = { nav.chat(ChatTarget.Direct(uuid), prof.display_name ?: prof.name) }) { Text("Message") }
                     OutlinedButton(onClick = { store.calls.call(uuid, prof.display_name ?: prof.name); }) { Text("📞 Call") }
