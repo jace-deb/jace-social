@@ -36,3 +36,5 @@ targets:
           - CFBundleURLName: dev.jacedeb.jacesocial
             CFBundleURLSchemes: [jacesocial]
         UIBackgroundModes: [audio, voip]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true   # only for the fake API in CI (native-test/mock_api.py)

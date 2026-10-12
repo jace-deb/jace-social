@@ -26,6 +26,7 @@ jobs:
       - name: Build
         env:
           JACE_ANDROID_VERSION: "2.0.0"
+          JACE_API_BASE: http://10.0.2.2:8787   # the fake API on the runner (debug builds only; not released)
         run: ./gradlew assembleDebug --no-daemon --stacktrace
       - name: Name it
         run: |
@@ -42,10 +43,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           name: native-android
           path: dl
+      - name: Start the fake API
+        run: nohup python3 native-test/mock_api.py 8787 > mock.log 2>&1 &
       - name: KVM for the emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -62,7 +66,17 @@ jobs:
             sleep 15
             adb exec-out screencap -p > android-start.png
             adb shell pidof dev.jacedeb.jacesocial
+            adb shell am start -S -n dev.jacedeb.jacesocial/.MainActivity --es jace_token demo
+            sleep 10
+            adb exec-out screencap -p > android-chats.png
+            adb shell "am start -S -n dev.jacedeb.jacesocial/.MainActivity --es jace_open 'chat/dm/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb?title=Steve'"
+            sleep 10
+            adb exec-out screencap -p > android-chat.png
+            adb shell pidof dev.jacedeb.jacesocial
             adb logcat -d -s AndroidRuntime:E | tail -40
+      - name: What the fake API was asked
+        if: always()
+        run: tail -40 mock.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -96,6 +110,17 @@ jobs:
           xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial
           sleep 15
           xcrun simctl io "$DEVICE" screenshot ../ios-start.png
+          # signed in, against the fake API
+          python3 ../native-test/mock_api.py 8787 > ../mock.log 2>&1 &
+          xcrun simctl terminate "$DEVICE" dev.jacedeb.jacesocial
+          SIMCTL_CHILD_JACE_API_BASE=http://localhost:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo
+          sleep 10
+          xcrun simctl io "$DEVICE" screenshot ../ios-chats.png
+          xcrun simctl terminate "$DEVICE" dev.jacedeb.jacesocial
+          SIMCTL_CHILD_JACE_API_BASE=http://localhost:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceOpen dm:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:Steve
+          sleep 10
+          xcrun simctl io "$DEVICE" screenshot ../ios-chat.png
+          tail -30 ../mock.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:

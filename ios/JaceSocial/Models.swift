@@ -83,3 +83,85 @@ struct DeviceCode: Codable {
     var interval: Int = 5
     var ticket: String
 }
+
+// --- chats
+
+struct Attachment: Codable, Hashable {
+    var url: String = ""
+    var name: String = ""
+    var type: String = ""
+    var size: Int?
+}
+
+struct Embed: Codable, Hashable {
+    var url: String = ""
+    var title: String?
+    var description: String?
+    var image: String?
+    var site: String?
+}
+
+struct Reaction: Codable, Hashable {
+    var emoji: String
+    var count: Int = 1
+    var me: Bool = false
+}
+
+struct Message: Codable, Hashable, Identifiable {
+    var id: Int
+    var sender: String?
+    var body: String = ""
+    var created_at: String = ""
+    var edited_at: String?
+    var kind: String?
+    var reply_to: Int?
+    var attachments: [Attachment]?
+    var embeds: [Embed]?
+    var reactions: [Reaction]?
+}
+
+struct ReplyPreview: Codable, Hashable {
+    var id: Int
+    var sender: String?
+    var body: String = ""
+}
+
+struct MessagesPage: Codable {
+    var messages: [Message] = []
+    var replies: [String: ReplyPreview]?
+    var people: [String: Person]?
+}
+
+struct SentMessage: Codable { var message: Message }
+
+struct Group: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String = ""
+    var icon_url: String?
+    var members: [Person] = []
+    var unread: Int = 0
+}
+
+struct GroupsData: Codable { var groups: [Group] = [] }
+
+struct ServerItem: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String = ""
+    var icon_url: String?
+    var unread: Int = 0
+}
+
+struct ServersData: Codable { var servers: [ServerItem] = [] }
+
+/// Where messages go: a friend (direct messages) or a channel (group chat or server channel).
+enum ChatTarget: Hashable {
+    case direct(String)
+    case channel(String)
+
+    var key: String {
+        switch self {
+        case .direct(let u): return "dm:\(u)"
+        case .channel(let c): return "ch:\(c)"
+        }
+    }
+}

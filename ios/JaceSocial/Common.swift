@@ -1,54 +1,5 @@
 import SwiftUI
 
-/// For now: your friends with what they're doing. (Chats, servers and the rest come next.)
-struct HomeView: View {
-    @EnvironmentObject var session: Session
-    @State private var data: FriendsData?
-    @State private var error: String?
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if let e = error {
-                    Text(e).foregroundStyle(JaceColor.red)
-                } else if let d = data {
-                    if !d.incoming.isEmpty {
-                        Section("Friend requests — \(d.incoming.count)") {
-                            ForEach(d.incoming) { PersonRow(person: $0, line: "Wants to be friends") }
-                        }
-                    }
-                    let online = d.friends.filter { $0.online }
-                    let offline = d.friends.filter { !$0.online }
-                    Section("Online — \(online.count)") { ForEach(online) { PersonRow(person: $0, line: describe($0)) } }
-                    Section("Offline — \(offline.count)") { ForEach(offline) { PersonRow(person: $0, line: "Offline") } }
-                } else {
-                    Text("Loading…").foregroundStyle(JaceColor.muted)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(JaceColor.bg)
-            .navigationTitle("Friends")
-            .toolbar {
-                Button { Task { await session.signOut() } } label: { Image(systemName: "rectangle.portrait.and.arrow.right") }
-                    .accessibilityLabel("Sign out")
-            }
-            .refreshable { await load() }
-            .task { await load() }
-        }
-    }
-
-    func load() async {
-        do {
-            data = try await session.api.friends()
-            error = nil
-        } catch let e as ApiError where e.status == 401 {
-            session.expired()
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-}
-
 struct PersonRow: View {
     let person: Person
     let line: String

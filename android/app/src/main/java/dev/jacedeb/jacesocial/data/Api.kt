@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -67,4 +68,52 @@ class Api(private val token: () -> String?) {
         return json.decodeFromString(text)
     }
     suspend fun signOut() { runCatching { call("POST", "/auth/signout") } }
+
+    // --- chats (direct messages, group chats and server channels share these)
+    suspend fun groups(): GroupsData = get("/groups")
+    suspend fun servers(): ServersData = get("/servers")
+
+    suspend fun messages(t: ChatTarget, before: Long? = null): MessagesPage = when (t) {
+        is ChatTarget.Direct -> get("/messages?with=${t.uuid}" + (before?.let { "&before=$it" } ?: ""))
+        is ChatTarget.Channel -> get("/channels/${t.id}/messages" + (before?.let { "?before=$it" } ?: ""))
+    }
+
+    suspend fun send(t: ChatTarget, body: String, replyTo: Long? = null): Message {
+        val fields = buildMap<String, kotlinx.serialization.json.JsonElement> {
+            put("body", JsonPrimitive(body))
+            replyTo?.let { put("reply_to", JsonPrimitive(it)) }
+            if (t is ChatTarget.Direct) put("to", JsonPrimitive(t.uuid))
+        }
+        val path = if (t is ChatTarget.Channel) "/channels/${t.id}/messages" else "/messages"
+        return json.decodeFromString<SentMessage>(call("POST", path, JsonObject(fields).toString())).message
+    }
+
+    suspend fun edit(t: ChatTarget, id: Long, body: String) {
+        call("PATCH", if (t is ChatTarget.Direct) "/messages/direct/$id" else "/messages/$id",
+             JsonObject(mapOf("body" to JsonPrimitive(body))).toString())
+    }
+
+    suspend fun delete(t: ChatTarget, id: Long) {
+        call("DELETE", if (t is ChatTarget.Direct) "/messages/direct/$id" else "/messages/$id")
+    }
+
+    suspend fun react(t: ChatTarget, id: Long, emoji: String, on: Boolean) {
+        val body = JsonObject(mapOf("scope" to JsonPrimitive(if (t is ChatTarget.Direct) "d" else "c"),
+                                    "message_id" to JsonPrimitive(id), "emoji" to JsonPrimitive(emoji)))
+        call(if (on) "POST" else "DELETE", "/reactions", body.toString())
+    }
+
+    suspend fun typing(t: ChatTarget) {
+        runCatching {
+            if (t is ChatTarget.Direct) call("POST", "/messages/typing", JsonObject(mapOf("to" to JsonPrimitive(t.uuid))).toString())
+            else call("POST", "/channels/${(t as ChatTarget.Channel).id}/typing")
+        }
+    }
+
+    suspend fun markRead(t: ChatTarget) {
+        runCatching {
+            if (t is ChatTarget.Direct) call("POST", "/messages/read", JsonObject(mapOf("with" to JsonPrimitive(t.uuid))).toString())
+            else call("POST", "/channels/${(t as ChatTarget.Channel).id}/read")
+        }
+    }
 }

@@ -98,3 +98,69 @@ data class DeviceCode(
     val expires_at: String? = null,
     val ticket: String,
 )
+
+// --- chats
+
+@Serializable
+data class Attachment(val url: String = "", val name: String = "", val type: String = "", val size: Long = 0,
+                      val width: Int? = null, val height: Int? = null)
+
+@Serializable
+data class Embed(val url: String = "", val title: String? = null, val description: String? = null, val image: String? = null,
+                 val site: String? = null, val color: String? = null, val type: String = "link")
+
+@Serializable
+data class Reaction(val emoji: String, val count: Int = 1, val me: Boolean = false)
+
+@Serializable
+data class Message(
+    val id: Long,
+    val sender: String? = null,
+    val body: String = "",
+    val created_at: String = "",
+    val edited_at: String? = null,
+    val kind: String? = null,
+    val read_at: String? = null,
+    val recipient: String? = null,
+    val channel_id: String? = null,
+    val reply_to: Long? = null,
+    val attachments: List<Attachment> = emptyList(),
+    val embeds: List<Embed> = emptyList(),
+    val reactions: List<Reaction> = emptyList(),
+    val mentions: List<String> = emptyList(),
+    val pinned_at: String? = null,
+)
+
+@Serializable
+data class ReplyPreview(val id: Long, val sender: String? = null, val body: String = "", val attachments: Int = 0)
+
+@Serializable
+data class MessagesPage(
+    val messages: List<Message> = emptyList(),
+    val replies: Map<String, ReplyPreview> = emptyMap(),
+    val people: Map<String, Person> = emptyMap(),
+    val perms: Long? = null,
+)
+
+@Serializable
+data class SentMessage(val message: Message)
+
+@Serializable
+data class Group(val id: String, val name: String = "", val icon_url: String? = null, val owner: String = "",
+                 val members: List<Person> = emptyList(), val unread: Int = 0, val last_message_at: String? = null)
+
+@Serializable
+data class GroupsData(val groups: List<Group> = emptyList())
+
+@Serializable
+data class ServerItem(val id: String, val name: String = "", val icon_url: String? = null, val role: String = "", val unread: Int = 0)
+
+@Serializable
+data class ServersData(val servers: List<ServerItem> = emptyList())
+
+/** Where messages go: a friend (direct messages) or a channel (group chat or server channel). */
+sealed class ChatTarget {
+    abstract val key: String
+    data class Direct(val uuid: String) : ChatTarget() { override val key = "dm:$uuid" }
+    data class Channel(val id: String) : ChatTarget() { override val key = "ch:$id" }
+}

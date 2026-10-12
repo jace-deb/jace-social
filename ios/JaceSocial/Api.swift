@@ -9,9 +9,15 @@ struct ApiError: LocalizedError {
 
 /// The Jace Social API (docs/api.md).
 final class Api {
-    static let base = URL(string: "https://jace-social.vercel.app/api/v1")!
+    /// Test builds can point at the fake API (native-test/mock_api.py) with JACE_API_BASE.
+    static let base: URL = {
+        #if DEBUG
+        if let b = ProcessInfo.processInfo.environment["JACE_API_BASE"], let u = URL(string: b + "/api/v1") { return u }
+        #endif
+        return URL(string: "https://jace-social.vercel.app/api/v1")!
+    }()
     var token: () -> String?
-    private let decoder = JSONDecoder()
+    let decoder = JSONDecoder()
 
     init(token: @escaping () -> String?) { self.token = token }
 
@@ -22,7 +28,7 @@ final class Api {
         req.timeoutInterval = 30
         req.setValue("JaceSocialiOS/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "?")", forHTTPHeaderField: "User-Agent")
         if let t = token() { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
-        if method != "GET" && method != "DELETE" {
+        if method != "GET" && (method != "DELETE" || body != nil) {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONSerialization.data(withJSONObject: body ?? [:])
         }
@@ -64,4 +70,54 @@ final class Api {
         return pending(data) ? nil : try decoder.decode(SignedIn.self, from: data)
     }
     func signOut() async { _ = try? await call("POST", "/auth/signout") }
+
+    // --- chats (direct messages, group chats and server channels share these)
+    func groups() async throws -> [Group] { (try await get("/groups") as GroupsData).groups }
+    func servers() async throws -> [ServerItem] { (try await get("/servers") as ServersData).servers }
+
+    func messages(_ t: ChatTarget, before: Int? = nil) async throws -> MessagesPage {
+        switch t {
+        case .direct(let u): return try await get("/messages?with=\(u)" + (before.map { "&before=\($0)" } ?? ""))
+        case .channel(let c): return try await get("/channels/\(c)/messages" + (before.map { "?before=\($0)" } ?? ""))
+        }
+    }
+
+    func send(_ t: ChatTarget, _ body: String, replyTo: Int? = nil) async throws -> Message {
+        var fields: [String: Any] = ["body": body]
+        if let r = replyTo { fields["reply_to"] = r }
+        let path: String
+        switch t {
+        case .direct(let u): fields["to"] = u; path = "/messages"
+        case .channel(let c): path = "/channels/\(c)/messages"
+        }
+        return try decoder.decode(SentMessage.self, from: try await call("POST", path, body: fields)).message
+    }
+
+    private func messagePath(_ t: ChatTarget, _ id: Int) -> String {
+        if case .direct = t { return "/messages/direct/\(id)" }
+        return "/messages/\(id)"
+    }
+
+    func edit(_ t: ChatTarget, _ id: Int, _ body: String) async throws { _ = try await call("PATCH", messagePath(t, id), body: ["body": body]) }
+    func delete(_ t: ChatTarget, _ id: Int) async throws { _ = try await call("DELETE", messagePath(t, id)) }
+
+    func react(_ t: ChatTarget, _ id: Int, _ emoji: String, on: Bool) async throws {
+        let scope: String
+        if case .direct = t { scope = "d" } else { scope = "c" }
+        _ = try await call(on ? "POST" : "DELETE", "/reactions", body: ["scope": scope, "message_id": id, "emoji": emoji])
+    }
+
+    func typing(_ t: ChatTarget) async {
+        switch t {
+        case .direct(let u): _ = try? await call("POST", "/messages/typing", body: ["to": u])
+        case .channel(let c): _ = try? await call("POST", "/channels/\(c)/typing")
+        }
+    }
+
+    func markRead(_ t: ChatTarget) async {
+        switch t {
+        case .direct(let u): _ = try? await call("POST", "/messages/read", body: ["with": u])
+        case .channel(let c): _ = try? await call("POST", "/channels/\(c)/read")
+        }
+    }
 }

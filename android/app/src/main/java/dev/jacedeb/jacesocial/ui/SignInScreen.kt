@@ -80,7 +80,8 @@ fun SignInScreen(session: Session) {
     }
 
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Card(Modifier.widthIn(max = 420.dp).fillMaxWidth()) {
+        Card(Modifier.widthIn(max = 420.dp).fillMaxWidth(),
+            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = JaceColors.panel)) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Jace Social", color = JaceColors.green, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
                 Text("Friends, chat and servers - with Minecraft built in.", color = JaceColors.muted, textAlign = TextAlign.Center)
