@@ -85,6 +85,9 @@ fun ChatScreen(session: Session, store: Store, target: ChatTarget, title: String
     val scope = rememberCoroutineScope()
     val me by store.me.collectAsState()
     val typing by store.typing.collectAsState()
+    // read here so names and avatars fill in when they load after the chat opens
+    val friends by store.friends.collectAsState()
+    val groups by store.groups.collectAsState()
     var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var replies by remember { mutableStateOf<Map<String, ReplyPreview>>(emptyMap()) }
     var people by remember { mutableStateOf<Map<String, Person>>(emptyMap()) }
@@ -97,7 +100,8 @@ fun ChatScreen(session: Session, store: Store, target: ChatTarget, title: String
     var lastTyping by remember { mutableLongStateOf(0L) }
     val list = rememberLazyListState()
 
-    fun who(uuid: String?): Person? = uuid?.let { people[it] ?: store.person(it) ?: me?.let { m -> if (m.uuid == uuid) Person(m.uuid, m.name, avatar_url = m.avatar_url, online = true, status = m.status, display_name = m.display_name) else null } }
+    fun who(uuid: String?): Person? = uuid?.let { people[it] ?: friends?.friends?.firstOrNull { p -> p.uuid == it }
+        ?: groups.firstNotNullOfOrNull { g -> g.members.firstOrNull { p -> p.uuid == it } } ?: me?.let { m -> if (m.uuid == uuid) Person(m.uuid, m.name, avatar_url = m.avatar_url, online = true, status = m.status, display_name = m.display_name) else null } }
 
     suspend fun loadNewest() {
         try {
