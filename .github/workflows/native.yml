@@ -101,6 +101,9 @@ jobs:
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO build > build.log 2>&1 || { grep -E "error:" build.log | sort -u; tail -20 build.log; exit 1; }
           test -d "build/Build/Products/Debug-iphonesimulator/Jace Social.app"
+      - name: Start the fake API
+        working-directory: .
+        run: nohup python3 native-test/mock_api.py 8787 > mock.log 2>&1 &
       - name: Start it in the simulator and screenshot it
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in d for x in d[k] if 'iPhone' in x['name']))")
@@ -110,8 +113,8 @@ jobs:
           xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial
           sleep 15
           xcrun simctl io "$DEVICE" screenshot ../ios-start.png
-          # signed in, against the fake API
-          python3 ../native-test/mock_api.py 8787 > ../mock.log 2>&1 &
+          # signed in, against the fake API (started in the step before)
+          curl -sS -m 5 -H "Authorization: Bearer demo" http://127.0.0.1:8787/api/v1/me | head -c 200; echo
           xcrun simctl terminate "$DEVICE" dev.jacedeb.jacesocial
           SIMCTL_CHILD_JACE_API_BASE=http://127.0.0.1:8787 xcrun simctl launch "$DEVICE" dev.jacedeb.jacesocial -jaceToken demo
           sleep 25
