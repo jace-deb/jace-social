@@ -210,7 +210,7 @@ private struct LinkSettings: View {
                 }
             }
             .rowBg()
-            Section("Trusted sites (no warning)") {
+            Section {
                 if trusted.isEmpty { Text("None yet. You can trust a site from the warning, too.").foregroundStyle(JaceColor.muted) }
                 ForEach(trusted, id: \.self) { d in
                     HStack { Text(d); Spacer(); Button { store.saveSettings(["trusted_domains": trusted.filter { $0 != d }]) } label: { Image(systemName: "xmark") }.buttonStyle(.borderless) }
@@ -226,7 +226,7 @@ private struct LinkSettings: View {
                     }
                     .disabled(domain.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-            } footer: { Text("Link previews are fetched by the Jace Social server, so websites you see previews of don't get your IP address.") }
+            } header: { Text("Trusted sites (no warning)") } footer: { Text("Link previews are fetched by the Jace Social server, so websites you see previews of don't get your IP address.") }
             .rowBg()
         }
         .jaceList()
