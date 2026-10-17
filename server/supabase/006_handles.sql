@@ -19,7 +19,7 @@ declare
   h text;
   n int := 1;
 begin
-  if char_length(b) < 3 then b := rpad(coalesce(nullif(b, ''), 'player'), 3, '0'); end if;
+  if b = '' then b := 'player'; elsif char_length(b) < 3 then b := rpad(b, 3, '0'); end if;
   b := regexp_replace(b, '\.+$', '');
   h := b;
   while exists (select 1 from profiles where lower(handle) = h and uuid is distinct from me)
