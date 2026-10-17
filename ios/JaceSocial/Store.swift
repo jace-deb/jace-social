@@ -203,6 +203,23 @@ final class Store: ObservableObject {
         return nil
     }
 
+    /// The AltStore / SideStore source with every version (the website's /altstore).
+    static var altSource: String { Api.base.absoluteString.replacingOccurrences(of: "/api/v1", with: "") + "/altstore" }
+
+    /// Update (or add the source) in AltStore, else SideStore, else the release page.
+    func openUpdater(page: String? = nil) {
+        let src = Self.altSource.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? Self.altSource
+        let tries = ["altstore://source?url=\(src)", "sidestore://source?url=\(src)"].compactMap(URL.init(string:))
+        func next(_ i: Int) {
+            guard i < tries.count else {
+                if let p = page ?? update?.page, let u = URL(string: p) { UIApplication.shared.open(u) }
+                return
+            }
+            UIApplication.shared.open(tries[i]) { ok in if !ok { next(i + 1) } }
+        }
+        next(0)
+    }
+
     static func newer(_ a: String, than b: String) -> Bool {
         let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
         for i in 0..<3 where (x.count > i ? x[i] : 0) != (y.count > i ? y[i] : 0) { return (x.count > i ? x[i] : 0) > (y.count > i ? y[i] : 0) }

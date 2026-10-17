@@ -51,7 +51,7 @@ struct YouView: View {
             Section {
                 Text("Jace Social \(version)").foregroundStyle(JaceColor.muted)
                 if let u = store.update {
-                    Button("Update to \(u.version)") { if let url = URL(string: u.page) { UIApplication.shared.open(url) } }
+                    Button("Update to \(u.version)") { store.openUpdater(page: u.page) }
                 } else {
                     Button(checking ? "Checking…" : "Check for updates") {
                         checking = true
@@ -59,6 +59,8 @@ struct YouView: View {
                     }
                     .disabled(checking)
                 }
+                Button("Get updates in AltStore / SideStore") { store.openUpdater() }
+                Text("Adds the Jace Social source, so new versions show up there as updates.").font(.footnote).foregroundStyle(JaceColor.muted)
                 ToggleRow(label: "Check for updates on startup", isOn: store.autoUpdate) { store.autoUpdate = $0; store.objectWillChange.send() }
                 Button("Sign out", role: .destructive) { signOut = true }
             }

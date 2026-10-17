@@ -101,7 +101,7 @@ export default async function Home() {
                 ? <>download the app <a href="#download">above</a>, open it and allow installing from your browser.</>
                 : <>coming soon. Until then, open <a href="/app">the web app</a> and choose <b>Add to Home screen</b>.</>}
                 {" "}<b>iPhone:</b> open <a href="/app">the web app</a> in Safari, tap <b>Share → Add to Home Screen</b>.
-                {mobile?.downloads.some((d) => d.id === "ios") && <> Or sideload the <a href={mobile.downloads.find((d) => d.id === "ios")!.url}>iPhone app</a> with AltStore or Sideloadly.</>}</p></div>
+                {mobile?.downloads.some((d) => d.id === "ios") && <> Or get the iPhone app in AltStore or SideStore: add the source <a href="/altstore"><code>jace-social.vercel.app/altstore</code></a> (<a href="altstore://source?url=https://jace-social.vercel.app/altstore">open in AltStore</a>), and updates arrive there.</>}</p></div>
               <div className="card"><h3>Jace Launcher</h3><p><a href="https://okjace.github.io/jace-launcher/">Jace Launcher</a> has friends and chat built in.
                 Link your Jace account in <b>Settings → Jace Social</b>.</p></div>
               <div className="card"><h3>In Minecraft</h3><p>Install the <a href="https://jace-store-deb.vercel.app/project/jace-social-minecraft">Jace Social mod</a>

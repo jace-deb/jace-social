@@ -55,9 +55,9 @@ struct MainView: View {
         .sheet(isPresented: $welcome) { NavigationStack { WelcomeView() }.environmentObject(store).environmentObject(router) }
         .alert(store.askUpdate.map { "Update to Jace Social \($0.version)?" } ?? "", isPresented: Binding(get: { store.askUpdate != nil }, set: { if !$0 { store.askUpdate = nil } }),
                presenting: store.askUpdate) { r in
-            Button("Update now") { if let u = URL(string: r.page) { UIApplication.shared.open(u) } }
+            Button("Update now") { store.openUpdater(page: r.page) }
             Button("Later", role: .cancel) {}
-        } message: { r in Text("Get the new version from the release page.\n\n\((r.notes ?? "").prefix(600))") }
+        } message: { r in Text("It updates in AltStore or SideStore: open Jace Social there and tap Update.\n\n\((r.notes ?? "").prefix(600))") }
         .alert("Leaving Jace Social", isPresented: Binding(get: { store.pendingLink.map { !trusted($0) } ?? false }, set: { if !$0 { store.pendingLink = nil } }),
                presenting: store.pendingLink) { url in
             Button("Open link") { UIApplication.shared.open(url) }
