@@ -1,7 +1,7 @@
 license = "MIT"
 modLoader = "javafml"
 loaderVersion = "[47,)"
-issueTrackerURL = "https://github.com/jace-deb/jace-social/issues"
+issueTrackerURL = "https://github.com/okjace/jace-social/issues"
 
 [[mods]]
 modId = "${id}"

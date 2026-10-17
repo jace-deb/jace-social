@@ -18,7 +18,7 @@ Jace Launcher, the desktop app and the Jace Social mod all talk to it. It's a Ne
    - **SQL Editor:** run `supabase/schema.sql`, then `supabase/002_calls.sql`, then `supabase/003_social.sql`, then `supabase/004_community.sql`. 003 adds Jace accounts, profiles, group chats, servers and the `avatars` storage bucket. 004 adds roles and permissions, replies, reactions, files (the `attachments` bucket), moderation, custom invite links, onboarding, voice channels and bots. Each file is safe to run again.
    - **Realtime → Settings:** make sure public channel access is allowed (it's the default).
    - **Project Settings → API Keys:** copy the project URL, the **publishable** key and the **secret** key.
-2. **Vercel:** New Project, then import `jace-deb/jace-social`.
+2. **Vercel:** New Project, then import `okjace/jace-social`.
    - **Root Directory:** `server`
    - **Project name:** `jace-social` (that gives `https://jace-social.vercel.app`, the address the launcher and mod use).
    - **Environment variables:** `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_PUBLISHABLE_KEY` (see `.env.example`).

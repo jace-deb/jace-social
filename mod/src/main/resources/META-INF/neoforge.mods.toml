@@ -1,7 +1,7 @@
 license = "MIT"
 modLoader = "javafml"
 loaderVersion = "[1,)"
-issueTrackerURL = "https://github.com/jace-deb/jace-social/issues"
+issueTrackerURL = "https://github.com/okjace/jace-social/issues"
 
 [[mixins]]
 config = "jacefriends.mixins.json"

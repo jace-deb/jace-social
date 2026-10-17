@@ -46,7 +46,7 @@ export default async function Home() {
               <img src="/logo.png" alt="" /><span>Jace Social</span></a>
             <a className="tab active" href="/">Home</a>
             <a className="tab" href="/app">Open the app</a>
-            <a className="tab hide-sm" href="https://jace-deb.github.io/jace-launcher/">Jace Launcher</a>
+            <a className="tab hide-sm" href="https://okjace.github.io/jace-launcher/">Jace Launcher</a>
             <a className="tab hide-sm" href={`https://github.com/${REPO}`}>GitHub</a>
           </nav>
         </div>
@@ -102,7 +102,7 @@ export default async function Home() {
                 : <>coming soon. Until then, open <a href="/app">the web app</a> and choose <b>Add to Home screen</b>.</>}
                 {" "}<b>iPhone:</b> open <a href="/app">the web app</a> in Safari, tap <b>Share → Add to Home Screen</b>.
                 {mobile?.downloads.some((d) => d.id === "ios") && <> Or sideload the <a href={mobile.downloads.find((d) => d.id === "ios")!.url}>iPhone app</a> with AltStore or Sideloadly.</>}</p></div>
-              <div className="card"><h3>Jace Launcher</h3><p><a href="https://jace-deb.github.io/jace-launcher/">Jace Launcher</a> has friends and chat built in.
+              <div className="card"><h3>Jace Launcher</h3><p><a href="https://okjace.github.io/jace-launcher/">Jace Launcher</a> has friends and chat built in.
                 Link your Jace account in <b>Settings → Jace Social</b>.</p></div>
               <div className="card"><h3>In Minecraft</h3><p>Install the <a href="https://jace-store-deb.vercel.app/project/jace-social-minecraft">Jace Social mod</a>
                 (1.20.1 to 26.3, Fabric, NeoForge and Forge) and press <b>J</b>.</p></div>
@@ -128,7 +128,7 @@ export default async function Home() {
       <footer>
         <div className="wrap">
           <span>Jace Social · made by jace.deb</span>
-          <span><a href={`https://github.com/${REPO}`}>GitHub</a> · <a href="https://jace-deb.github.io/jace-launcher/">Jace Launcher</a> · <a href="https://jace-store-deb.vercel.app">Jace Store</a></span>
+          <span><a href={`https://github.com/${REPO}`}>GitHub</a> · <a href="https://okjace.github.io/jace-launcher/">Jace Launcher</a> · <a href="https://jace-store-deb.vercel.app">Jace Store</a></span>
         </div>
       </footer>
     </div>

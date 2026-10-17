@@ -127,7 +127,7 @@ jobs:
     secrets: inherit
 
   site:
-    # site/ is the old GitHub Pages address (jace-deb.github.io/jace-social); it redirects to the website
+    # site/ is the old GitHub Pages address (okjace.github.io/jace-social); it redirects to the website
     needs: plan
     if: needs.plan.outputs.site == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

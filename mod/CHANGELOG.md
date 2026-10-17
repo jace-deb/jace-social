@@ -28,7 +28,7 @@
 - The jar files are now named like `jace_social_1.4.0+26.3-fabric.jar`. The mod itself is the same (its id is still `jacefriends`), so updates and your settings carry over.
 
 ## 1.3.0
-- **Jace Friends is now the Jace Social mod.** It's part of [Jace Social](https://jace-deb.github.io/jace-social/), which also has a web app and a desktop app with the same friends.
+- **Jace Friends is now the Jace Social mod.** It's part of [Jace Social](https://jace-social.vercel.app/), which also has a web app and a desktop app with the same friends.
 - **Group chats:** they appear in your friends list. Chat in them, or start a new one with **New group**.
 - Friends see your **status** (Idle, Do Not Disturb) and **custom status**.
 - **Richer presence:** friends see your mod loader, world name and how long you've been playing.

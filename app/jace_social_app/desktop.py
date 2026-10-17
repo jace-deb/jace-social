@@ -245,7 +245,7 @@ def metainfo() -> str:
   <id>{APP_ID}</id>
   <name>{APP_NAME}</name>
   <summary>Friends, chat, servers and voice calls, with Minecraft built in</summary>
-  <developer id="io.github.jace-deb"><name>{AUTHOR}</name></developer>
+  <developer id="io.github.okjace"><name>{AUTHOR}</name></developer>
   <url type="homepage">{WEBSITE}</url>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>

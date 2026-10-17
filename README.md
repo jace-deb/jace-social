@@ -5,7 +5,7 @@
 Friends, direct messages, group chats, servers and voice calls, with Minecraft built in. Use it:
 - in your browser
 - as a desktop app for Windows, macOS and Linux
-- in [Jace Launcher](https://github.com/jace-deb/jace-launcher)
+- in [Jace Launcher](https://github.com/okjace/jace-launcher)
 - inside Minecraft with the Jace Social mod
 
 One account, the same friends everywhere.

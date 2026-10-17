@@ -12,7 +12,7 @@ import { Modal } from "./ui";
 type LinkCtx = { open: (url: string, masked?: string) => void };
 const LinkContext = createContext<LinkCtx>({ open: (u) => window.open(u, "_blank", "noopener,noreferrer") });
 
-const OWN_HOSTS = ["jace-social.vercel.app", "jace-deb.github.io", "jace-store-deb.vercel.app"];
+const OWN_HOSTS = ["jace-social.vercel.app", "okjace.github.io", "jace-store-deb.vercel.app"];
 
 function hostOf(url: string) {
   try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }

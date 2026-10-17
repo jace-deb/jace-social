@@ -2,7 +2,7 @@
 // update checks), cached by Next for 10 minutes so visitors don't each ask GitHub.
 import type { Download } from "@/components/Downloads";
 
-export const REPO = "jace-deb/jace-social";
+export const REPO = "okjace/jace-social";
 export const PLATFORMS = [
   { id: "windows", suffix: "-windows-x64.exe", label: "Windows", note: "10 / 11" },
   { id: "mac-arm", suffix: "-macos-arm64.app.zip", label: "macOS", note: "Apple Silicon" },

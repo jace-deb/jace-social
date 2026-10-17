@@ -7,8 +7,8 @@
   "authors": ["jace.deb"],
   "contact": {
     "homepage": "https://jace-store-deb.vercel.app/project/jace-social-minecraft",
-    "sources": "https://github.com/jace-deb/jace-social/tree/main/mod",
-    "issues": "https://github.com/jace-deb/jace-social/issues"
+    "sources": "https://github.com/okjace/jace-social/tree/main/mod",
+    "issues": "https://github.com/okjace/jace-social/issues"
   },
   "license": "MIT",
   "icon": "assets/jacefriends/icon.png",
