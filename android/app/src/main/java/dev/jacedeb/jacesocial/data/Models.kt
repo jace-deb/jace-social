@@ -45,6 +45,7 @@ data class Person(
     val nickname: String? = null,
     val roles: List<String> = emptyList(),
     val display_name: String? = null,
+    val handle: String? = null,
     val joined_at: String? = null,
     val timeout_until: String? = null,
 ) {
@@ -70,6 +71,9 @@ data class Me(
     val links: List<Link> = emptyList(),
     val minecraft_name: String? = null,
     val jace_name: String? = null,
+    val handle: String? = null,
+    /** when the handle can change again (null: now) */
+    val handle_change_at: String? = null,
     val minecraft_linked: Boolean = false,
     val jace_linked: Boolean = false,
     val inbox: String = "",
@@ -82,7 +86,7 @@ data class Me(
     fun asPerson() = Person(uuid, name, online = status != "invisible", status = status, avatar_url = avatar_url,
         custom_status = custom_status, status_emoji = status_emoji, display_name = display_name, is_bot = is_bot,
         bio = bio, pronouns = pronouns, accent_color = accent_color, links = links, banner_url = banner_url,
-        minecraft_name = minecraft_name, jace_name = jace_name)
+        minecraft_name = minecraft_name, jace_name = jace_name, handle = handle)
 }
 
 /** Settings that follow you to every device (Settings -> Appearance, Notifications, Links, Advanced). */
@@ -294,7 +298,7 @@ data class FullProfile(
     val activity: Activity? = null, val last_seen: String? = null, val custom_status: String? = null, val status_emoji: String? = null,
     val minecraft_name: String? = null, val jace_name: String? = null, val avatar_url: String? = null, val banner_url: String? = null,
     val bio: String? = null, val pronouns: String? = null, val accent_color: String? = null, val links: List<Link> = emptyList(),
-    val is_bot: Boolean = false, val bot_owner: String? = null, val display_name: String? = null,
+    val is_bot: Boolean = false, val bot_owner: String? = null, val display_name: String? = null, val handle: String? = null,
     val is_friend: Boolean = false, val is_you: Boolean = false, val mutual_servers: List<MutualServer> = emptyList(),
 ) {
     fun asPerson() = Person(uuid, name, online, status, activity = activity, avatar_url = avatar_url, custom_status = custom_status,

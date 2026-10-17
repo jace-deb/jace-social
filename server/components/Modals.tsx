@@ -47,7 +47,7 @@ export function ProfileModal({ uuid, onClose, onMessage, onChanged, onError, det
           <h2>{member?.nickname || p.name}{p.is_bot && <span className="bot-tag" style={{ marginLeft: 8, verticalAlign: "middle" }}>BOT</span>}</h2>
           {member?.nickname && <div className="muted small">{p.name}</div>}
           <div className="muted small">
-            {[p.jace_name && `@${p.jace_name}`, p.minecraft_name && `⛏ ${p.minecraft_name}`, p.pronouns].filter(Boolean).join(" · ")}
+            {[p.handle ? `@${p.handle}` : p.jace_name && `@${p.jace_name}`, p.minecraft_name && `⛏ ${p.minecraft_name}`, p.pronouns].filter(Boolean).join(" · ")}
           </div>
           <div className="small" style={{ marginTop: 6 }}>
             {statusLabel[p.status]}{p.custom_status && <> · {p.status_emoji} {p.custom_status}</>}
@@ -98,7 +98,7 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError, initia
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab ?? "profile");
   const [f, setF] = useState({
-    display_name: me.display_name ?? "", pronouns: me.pronouns ?? "", bio: me.bio ?? "",
+    display_name: me.display_name ?? "", handle: me.handle ?? "", pronouns: me.pronouns ?? "", bio: me.bio ?? "",
     accent_color: me.accent_color ?? "#3ddc84", links: me.links.length ? me.links : [{ label: "", url: "" }],
   });
   const [busy, setBusy] = useState(false);
@@ -108,7 +108,10 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError, initia
   async function save() {
     setBusy(true);
     try {
-      const m = await api<Me>("/me", { method: "PATCH", body: { ...f, links: f.links.filter((l) => l.url.trim()) } });
+      const { handle, ...rest } = f;
+      const body: Record<string, unknown> = { ...rest, links: f.links.filter((l) => l.url.trim()) };
+      if (handle.trim().replace(/^@/, "").toLowerCase() !== (me.handle ?? "")) body.handle = handle;
+      const m = await api<Me>("/me", { method: "PATCH", body });
       onSaved(m); setNote("Saved!");
     } catch (e) { onError((e as Error).message); } finally { setBusy(false); }
   }
@@ -185,6 +188,18 @@ export function SettingsModal({ me, onClose, onSaved, onSignOut, onError, initia
             </div>
             <label>Display name<input value={f.display_name} maxLength={32} placeholder={me.minecraft_name ?? me.jace_name ?? ""}
               onChange={(e) => setF({ ...f, display_name: e.target.value })} /></label>
+            <label>Handle
+              <div className="vanity">
+                <span className="muted">@</span>
+                <input value={f.handle} maxLength={21} placeholder="yourname" disabled={!!me.handle_change_at}
+                  onChange={(e) => setF({ ...f, handle: e.target.value.toLowerCase().replace(/[^a-z0-9_.@]/g, "") })} />
+              </div>
+            </label>
+            <p className="muted small" style={{ margin: 0 }}>
+              {me.handle_change_at
+                ? `Your unique name. You can change it again on ${new Date(me.handle_change_at).toLocaleDateString()}.`
+                : "Your unique name: people can add you as a friend with it. 3-20 letters, numbers, _ and . - you can change it once a week."}
+            </p>
             <label>Pronouns<input value={f.pronouns} maxLength={24} onChange={(e) => setF({ ...f, pronouns: e.target.value })} /></label>
             <label>About me<textarea rows={4} value={f.bio} maxLength={300} onChange={(e) => setF({ ...f, bio: e.target.value })} /></label>
             <label>Profile color<input type="color" value={f.accent_color} style={{ height: 40, padding: 4 }}

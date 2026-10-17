@@ -27,7 +27,7 @@ struct ProfileView: View {
                             if p.is_bot == true { BotTag() }
                         }
                         .padding(.horizontal, 14)
-                        Text([p.jace_name.map { "@\($0)" }, p.minecraft_name.map { "⛏ \($0)" }, p.pronouns].compactMap { $0 }.joined(separator: " · "))
+                        Text([(p.handle ?? p.jace_name).map { "@\($0)" }, p.minecraft_name.map { "⛏ \($0)" }, p.pronouns].compactMap { $0 }.joined(separator: " · "))
                             .font(.footnote).foregroundStyle(JaceColor.muted).padding(.horizontal, 14)
                         Text(statusLabel(p.status ?? "offline") + (p.custom_status.map { " · \(p.status_emoji ?? "") \($0)" } ?? "")
                              + (p.online != true && p.last_seen != nil ? " · last seen \(since(p.last_seen)) ago" : ""))

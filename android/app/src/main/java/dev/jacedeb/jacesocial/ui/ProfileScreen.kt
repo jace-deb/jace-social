@@ -85,7 +85,7 @@ fun ProfileScreen(uuid: String, serverId: String?) {
                     style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 if (prof.is_bot) BotTag()
             }
-            Muted(listOfNotNull(prof.jace_name?.let { "@$it" }, prof.minecraft_name?.let { "⛏ $it" }, prof.pronouns).joinToString(" · "))
+            Muted(listOfNotNull(prof.handle?.let { "@$it" } ?: prof.jace_name?.let { "@$it" }, prof.minecraft_name?.let { "⛏ $it" }, prof.pronouns).joinToString(" · "))
             Text(statusLabel(prof.status) + (prof.custom_status?.let { " · ${prof.status_emoji ?: ""} $it" } ?: "") +
                 (if (!prof.online && prof.last_seen != null) " · last seen ${since(prof.last_seen)} ago" else ""))
             ActivityCard(prof.asPerson())

@@ -151,7 +151,7 @@ methods: POST
 ## /api/v1/friends
 GET: friends (with online status + what they're doing), incoming and outgoing requests
 POST {name} or {uuid}: send a friend request. name can be a Minecraft username (works even if they
-  haven't used Jace Social yet) or a Jace username (write @name to only look up Jace accounts).
+  haven't used Jace Social yet), someone's @handle, or a Jace username (write @name to skip Minecraft).
 DELETE ?uuid=: remove a friend or cancel/decline a request
 methods: GET methods: POST methods: DELETE 
 
@@ -214,7 +214,8 @@ methods: POST methods: DELETE
 
 ## /api/v1/me
 GET: your own profile (everything friends see, plus account details)
-PATCH {display_name?, bio?, pronouns?, accent_color?, links?, status?, custom_status?, status_emoji?}
+PATCH {display_name?, handle?, bio?, pronouns?, accent_color?, links?, status?, custom_status?, status_emoji?}
+  handle: your unique @name (3-20: letters, numbers, _ and .), changeable once every 7 days
 methods: GET methods: PATCH 
 
 ## /api/v1/messages/direct/[id]
@@ -335,7 +336,7 @@ GET: someone's profile, whether you're friends, and servers you share
 methods: GET 
 
 ## /api/v1/users
-GET ?q=name : find Jace Social players by display name, Jace or Minecraft username (10 max)
+GET ?q=name : find Jace Social players by @handle, display name, Jace or Minecraft username (10 max)
 methods: GET 
 
 ## /api/v1/version

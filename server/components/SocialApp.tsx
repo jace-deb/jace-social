@@ -730,7 +730,7 @@ function ProfileCard({ p, onOpen }: { p: Person; onOpen: () => void }) {
       <div style={{ marginTop: -30, paddingLeft: 12, cursor: "pointer" }} onClick={onOpen}><Avatar p={p} size={64} status={p.status} /></div>
       <div style={{ padding: "8px 6px", display: "grid", gap: 10 }}>
         <div><b style={{ fontSize: 18, cursor: "pointer" }} onClick={onOpen}>{p.name}</b>
-          <div className="muted small">{[p.jace_name && `@${p.jace_name}`, p.minecraft_name && `⛏ ${p.minecraft_name}`, p.pronouns].filter(Boolean).join(" · ")}</div></div>
+          <div className="muted small">{[p.handle ? `@${p.handle}` : p.jace_name && `@${p.jace_name}`, p.minecraft_name && `⛏ ${p.minecraft_name}`, p.pronouns].filter(Boolean).join(" · ")}</div></div>
         {p.custom_status && <div className="small">{p.status_emoji} {p.custom_status}</div>}
         <ActivityCard a={p.activity} />
         {joinAddress(p) && <div className="small muted">Join from Jace Launcher or the mod: <code>{joinAddress(p)}</code></div>}
@@ -813,7 +813,7 @@ function FriendsHome({ data, reload, onError, onOpen, onMessage, onCall, back }:
     <div className="list">
       {tab === "add" && <>
         <h3>Add a friend</h3>
-        <p className="muted small">Type a Minecraft username, or a Jace username (start with @ to only search Jace).</p>
+        <p className="muted small">Type someone's @handle, or their Minecraft username.</p>
         <form style={{ display: "flex", gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (name.trim()) void add({ name: name.trim() }); }}>
           <input placeholder="Username" value={name} maxLength={33} onChange={(e) => search(e.target.value)} />
           <button className="btn primary" disabled={!name.trim()}>Send request</button>

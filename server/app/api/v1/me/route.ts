@@ -1,6 +1,8 @@
 // GET: your own profile (everything friends see, plus account details)
-// PATCH {display_name?, bio?, pronouns?, accent_color?, links?, status?, custom_status?, status_emoji?}
-import { ApiError, body, db, friendsOf, handler, me, notify, publicProfile, supabaseUrl, type Profile } from "@/lib/server";
+// PATCH {display_name?, handle?, bio?, pronouns?, accent_color?, links?, status?, custom_status?, status_emoji?}
+//   handle: your unique @name (3-20: letters, numbers, _ and .), changeable once every 7 days
+import { ApiError, body, checkHandle, db, friendsOf, handler, HANDLE_COOLDOWN_DAYS, me, notify, publicProfile, supabaseUrl,
+  type Profile } from "@/lib/server";
 
 function own(p: Profile) {
   return {
@@ -10,7 +12,14 @@ function own(p: Profile) {
     minecraft_linked: p.mc_linked !== false, jace_linked: !!p.jace_sub, jace_name: p.jace_name ?? null,
     inbox: p.inbox, realtime: { url: supabaseUrl(), key: process.env.SUPABASE_PUBLISHABLE_KEY },
     settings: p.settings ?? {}, onboarded: !!p.onboarded_at || !!p.is_bot,
+    handle_change_at: handleChangeAt(p),             // when you can change your handle again (null: now)
   };
+}
+
+function handleChangeAt(p: Profile): string | null {
+  if (!p.handle_changed_at) return null;
+  const next = new Date(p.handle_changed_at).getTime() + HANDLE_COOLDOWN_DAYS * 86400_000;
+  return next > Date.now() ? new Date(next).toISOString() : null;
 }
 
 // Private settings that follow you to every device. Unknown keys are dropped.
@@ -49,6 +58,18 @@ export const PATCH = handler(async (req) => {
   const b = await body<Record<string, unknown>>(req);
   const patch: Partial<Profile> = {};
   if ("display_name" in b) patch.display_name = text(b.display_name, 32, "Display name");
+  if ("handle" in b) {
+    const h = checkHandle(b.handle);
+    if (h !== p.handle) {
+      if (!("handle" in p)) throw new ApiError(503, "Handles aren't set up yet - run supabase/006_handles.sql first");
+      const wait = handleChangeAt(p);
+      if (wait) throw new ApiError(429, `You can change your handle again on ${new Date(wait).toUTCString().slice(0, 16)}`);
+      const { data: taken } = await db().from("profiles").select("uuid").eq("handle", h).neq("uuid", p.uuid).limit(1).maybeSingle();
+      if (taken) throw new ApiError(409, `@${h} is taken`);
+      patch.handle = h;
+      patch.handle_changed_at = new Date().toISOString();
+    }
+  }
   if ("bio" in b) patch.bio = text(b.bio, 300, "Bio");
   if ("pronouns" in b) patch.pronouns = text(b.pronouns, 24, "Pronouns");
   if ("custom_status" in b) patch.custom_status = text(b.custom_status, 80, "Custom status");
@@ -79,8 +100,12 @@ export const PATCH = handler(async (req) => {
     patch.settings = merged;
   }
   if (b.onboarded === true) patch.onboarded_at = p.onboarded_at ?? new Date().toISOString();
-  if (!Object.keys(patch).length) throw new ApiError(400, "Nothing to change");
+  if (!Object.keys(patch).length) {
+    if ("handle" in b) return own(p);               // the handle you already have
+    throw new ApiError(400, "Nothing to change");
+  }
   const { data, error } = await db().from("profiles").update(patch).eq("uuid", p.uuid).select("*").single();
+  if (error?.code === "23505") throw new ApiError(409, `@${patch.handle} is taken`);    // someone got it a moment ago
   if (error) throw error;
   const friends = await friendsOf(p.uuid);
   await notify(friends.map((f) => f.inbox), "presence", { uuid: p.uuid });

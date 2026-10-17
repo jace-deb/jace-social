@@ -1,9 +1,9 @@
 // GET: friends (with online status + what they're doing), incoming and outgoing requests
 // POST {name} or {uuid}: send a friend request. name can be a Minecraft username (works even if they
-//   haven't used Jace Social yet) or a Jace username (write @name to only look up Jace accounts).
+//   haven't used Jace Social yet), someone's @handle, or a Jace username (write @name to skip Minecraft).
 // DELETE ?uuid=: remove a friend or cancel/decline a request
 import {
-  ApiError, body, cleanUuid, db, ensureProfile, friendsOf, handler, me, mojangLookup, notify, publicProfile,
+  ApiError, body, cleanUuid, db, ensureProfile, friendsOf, handler, me, mojangLookup, notify, profileByHandle, publicProfile,
   type Profile,
 } from "@/lib/server";
 
@@ -26,7 +26,7 @@ export const GET = handler(async (req) => {
   };
 });
 
-/** Who "name" means: a Jace user (@name, or not a valid Minecraft name) or a Minecraft player. */
+/** Who "name" means: someone's @handle or Jace username (@name, or not a valid Minecraft name), or a Minecraft player. */
 async function findTarget(b: { name?: string; uuid?: string }): Promise<Profile> {
   if (b.uuid) {
     const { data } = await db().from("profiles").select("*").eq("uuid", cleanUuid(b.uuid)).maybeSingle();
@@ -38,12 +38,14 @@ async function findTarget(b: { name?: string; uuid?: string }): Promise<Profile>
   const name = raw.replace(/^@/, "");
   if (!name) throw new ApiError(400, "Type a username");
   const jace = async () => {
+    const byHandle = await profileByHandle(name);
+    if (byHandle) return byHandle;
     const { data } = await db().from("profiles").select("*").ilike("jace_name", name.replace(/[%_\\]/g, "")).limit(1).maybeSingle();
     return data as Profile | null;
   };
   if (jaceOnly) {
     const j = await jace();
-    if (!j) throw new ApiError(404, `No Jace user called "${name}"`);
+    if (!j) throw new ApiError(404, `Nobody has the handle @${name}`);
     return j;
   }
   try {

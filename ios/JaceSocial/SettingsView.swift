@@ -19,6 +19,7 @@ struct SettingsView: View {
 private struct ProfileSettings: View {
     @EnvironmentObject var store: Store
     @State private var name = ""
+    @State private var handle = ""
     @State private var pronouns = ""
     @State private var bio = ""
     @State private var accent = "#3ddc84"
@@ -57,6 +58,17 @@ private struct ProfileSettings: View {
                 }
                 .rowBg()
                 Section("Display name") { TextField(me.minecraft_name ?? me.jace_name ?? "", text: $name.max(32)) }.rowBg()
+                Section {
+                    HStack(spacing: 2) {
+                        Text("@").foregroundStyle(JaceColor.muted)
+                        TextField("yourname", text: Binding(get: { handle }, set: { handle = String($0.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." }.prefix(20)) }))
+                            .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(me.handle_change_at != nil)
+                    }
+                } header: { Text("Handle") } footer: {
+                    Text(me.handle_change_at.map { "Your unique name. You can change it again on \($0.prefix(10))." }
+                         ?? "Your unique name: people can add you as a friend with it. 3-20 letters, numbers, _ and . - you can change it once a week.")
+                }
+                .rowBg()
                 Section("Pronouns") { TextField("", text: $pronouns.max(24)) }.rowBg()
                 Section("About me") { TextField("", text: $bio.max(300), axis: .vertical).lineLimit(3...8) }.rowBg()
                 Section("Profile color") { Swatches(selected: accent) { accent = $0 ?? "#3ddc84" } }.rowBg()
@@ -77,6 +89,7 @@ private struct ProfileSettings: View {
                         busy = true
                         Task {
                             await store.act {
+                                if handle != (me.handle ?? "") { store.me = try await $0.updateMe(["handle": handle]) }
                                 store.me = try await $0.updateMe(["display_name": name, "pronouns": pronouns, "bio": bio, "accent_color": accent,
                                     "links": links.filter { !$0.url.trimmingCharacters(in: .whitespaces).isEmpty }.map { ["label": $0.label, "url": $0.url] }])
                                 store.show("Saved!")
@@ -94,7 +107,7 @@ private struct ProfileSettings: View {
         .onAppear {
             guard !loaded, let me = store.me else { return }
             loaded = true
-            name = me.display_name ?? ""; pronouns = me.pronouns ?? ""; bio = me.bio ?? ""
+            name = me.display_name ?? ""; handle = me.handle ?? ""; pronouns = me.pronouns ?? ""; bio = me.bio ?? ""
             accent = me.accent_color ?? "#3ddc84"; links = (me.links ?? []).isEmpty ? [Link()] : me.links ?? []
         }
     }

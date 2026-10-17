@@ -175,7 +175,7 @@ fun AddFriendDialog(store: Store, onDone: () -> Unit) {
         title = { Text("Add a friend") },
         text = {
             Column {
-                Text("Their Minecraft username, or @name for a Jace account.", color = JaceColors.muted, style = MaterialTheme.typography.bodySmall)
+                Text("Their @handle, or their Minecraft username.", color = JaceColors.muted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(name, { name = it; result = null }, singleLine = true, placeholder = { Text("Username") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { send() }))

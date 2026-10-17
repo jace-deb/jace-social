@@ -269,7 +269,7 @@ struct AddFriendView: View {
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .focused($focused).submitLabel(.send).onSubmit { Task { await send() } }
                         .onChange(of: name) { _ in result = nil }
-                } footer: { Text("Their Minecraft username, or @name for a Jace account.") }
+                } footer: { Text("Their @handle, or their Minecraft username.") }
                 if let r = result { Text(r).foregroundStyle(failed ? JaceColor.red : JaceColor.green) }
             }
             .scrollContentBackground(.hidden)

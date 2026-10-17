@@ -53,7 +53,7 @@ export type Activity = {
 export type Person = {
   uuid: string; name: string; online: boolean; status: Status; uses_jace: boolean;
   activity: Activity | null; last_seen: string | null; custom_status: string | null; status_emoji: string | null;
-  minecraft_name: string | null; jace_name: string | null; avatar_url: string | null;
+  minecraft_name: string | null; jace_name: string | null; handle?: string | null; avatar_url: string | null;
   bio: string | null; pronouns: string | null; accent_color: string | null; links: { label: string; url: string }[];
   unread?: number; role?: "owner" | "admin" | "member";
   banner_url?: string | null; is_bot?: boolean; bot_owner?: string | null;
@@ -69,6 +69,7 @@ export type Settings = {
 export type Me = Person & {
   display_name: string | null; minecraft_linked: boolean; jace_linked: boolean; inbox: string;
   realtime: { url: string; key: string }; settings: Settings; onboarded: boolean;
+  handle_change_at?: string | null;      // when the handle can change again (null: now)
 };
 export type Role = {
   id: string; server_id: string; name: string; color: string | null; icon: string | null; position: number;

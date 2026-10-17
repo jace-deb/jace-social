@@ -70,6 +70,7 @@ private fun ProfileSettings() {
     val me = store.me.collectAsState().value ?: return
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(me.display_name ?: "") }
+    var handle by remember { mutableStateOf(me.handle ?: "") }
     var pronouns by remember { mutableStateOf(me.pronouns ?: "") }
     var bio by remember { mutableStateOf(me.bio ?: "") }
     var accent by remember { mutableStateOf(me.accent_color ?: "#3ddc84") }
@@ -94,6 +95,11 @@ private fun ProfileSettings() {
             }
         }
         Field("Display name", name, { name = it }, max = 32, placeholder = me.minecraft_name ?: me.jace_name ?: "")
+        OutlinedTextField(handle, { handle = it.lowercase().filter { c -> c.isLetterOrDigit() || c == '_' || c == '.' }.take(20) },
+            label = { Text("Handle") }, prefix = { Text("@") }, singleLine = true, enabled = me.handle_change_at == null,
+            modifier = Modifier.fillMaxWidth())
+        Muted(me.handle_change_at?.let { "Your unique name. You can change it again on ${it.take(10)}." }
+            ?: "Your unique name: people can add you as a friend with it. 3-20 letters, numbers, _ and . - you can change it once a week.")
         Field("Pronouns", pronouns, { pronouns = it }, max = 24)
         Field("About me", bio, { bio = it }, max = 300, lines = 4)
         Text("Profile color", fontWeight = FontWeight.SemiBold)
@@ -111,6 +117,7 @@ private fun ProfileSettings() {
             busy = true
             scope.launch {
                 store.act {
+                    if (handle != (me.handle ?: "")) store.me.value = it.updateMe(jo("handle" to handle))
                     store.me.value = it.updateMe(jo("display_name" to name, "pronouns" to pronouns, "bio" to bio, "accent_color" to accent,
                         "links" to links.filter { l -> l.url.isNotBlank() }.map { l -> mapOf("label" to l.label, "url" to l.url) }))
                     store.toast("Saved!")

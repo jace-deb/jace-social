@@ -34,6 +34,7 @@ export type Profile = {
   status?: Status; custom_status?: string | null; status_emoji?: string | null;
   is_bot?: boolean; bot_owner?: string | null; bot_public?: boolean; bot_commands?: unknown[]; bot_program?: unknown; bot_code?: string | null;
   bot_enabled?: boolean; banner_url?: string | null; settings?: Record<string, unknown>; onboarded_at?: string | null;
+  handle?: string | null; handle_changed_at?: string | null;
 };
 export type Status = "online" | "idle" | "dnd" | "invisible";
 /**
@@ -166,10 +167,36 @@ export function publicProfile(p: Profile) {
     custom_status: p.custom_status ?? null, status_emoji: p.status_emoji ?? null,
     minecraft_name: p.mc_linked !== false ? p.name : null,
     jace_name: p.jace_name ?? null,
+    handle: p.handle ?? null,
     avatar_url: avatarFor(p),
     bio: p.bio ?? null, pronouns: p.pronouns ?? null, accent_color: p.accent_color ?? null, links: p.links ?? [],
     banner_url: p.banner_url ?? null, is_bot: !!p.is_bot, bot_owner: p.is_bot ? p.bot_owner ?? null : null,
   };
+}
+
+// --- handles: each account's unique @name, chosen by its owner (supabase/006_handles.sql)
+export const HANDLE_RE = /^[a-z0-9_](?:[a-z0-9_.]{1,18}[a-z0-9_])$/;
+const RESERVED = new Set(["everyone", "here", "jace", "jacesocial", "admin", "administrator", "moderator", "mod", "support",
+  "system", "staff", "official", "help", "null", "undefined"]);
+export const HANDLE_COOLDOWN_DAYS = 7;
+
+/** "@Steve.Builds " -> "steve.builds", or a message saying what's wrong with it. */
+export function checkHandle(raw: unknown): string {
+  const h = String(raw ?? "").trim().replace(/^@/, "").toLowerCase();
+  if (h.length < 3 || h.length > 20) throw new ApiError(400, "Handles are 3 to 20 characters");
+  if (!HANDLE_RE.test(h)) throw new ApiError(400, "Handles can use letters, numbers, _ and . (not at the start or end)");
+  if (h.includes("..")) throw new ApiError(400, "Handles can't have two dots in a row");
+  if (RESERVED.has(h)) throw new ApiError(400, `@${h} is reserved`);
+  return h;
+}
+
+/** The account with this @handle, or null. */
+export async function profileByHandle(raw: string): Promise<Profile | null> {
+  const h = raw.trim().replace(/^@/, "").toLowerCase();
+  if (!HANDLE_RE.test(h)) return null;
+  const { data, error } = await db().from("profiles").select("*").eq("handle", h).limit(1).maybeSingle();
+  if (error) return null;                          // before 006_handles.sql: no handles yet
+  return data as Profile | null;
 }
 
 /** A new random player id for Jace-only accounts (same shape as a Minecraft UUID). */

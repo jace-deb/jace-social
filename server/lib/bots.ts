@@ -327,7 +327,7 @@ async function jaceCommand(bot: Profile, c: Ctx, name: string, args: Record<stri
         const { data: m } = await db().from("server_members").select("joined_at").eq("server_id", c.channel.server_id).eq("uuid", id).maybeSingle();
         if (m) joined = `\nJoined this server: ${String(m.joined_at).slice(0, 10)}`;
       }
-      return say(`**${p.name}**${p.minecraft_name ? `\nMinecraft: ${p.minecraft_name}` : ""}${p.jace_name ? `\nJace: @${p.jace_name}` : ""}${joined}`);
+      return say(`**${p.name}**${p.minecraft_name ? `\nMinecraft: ${p.minecraft_name}` : ""}${p.handle ? `\nHandle: @${p.handle}` : ""}${p.jace_name ? `\nJace: ${p.jace_name}` : ""}${joined}`);
     }
   }
   return say(`I don't know /${name}`);

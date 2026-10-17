@@ -22,7 +22,7 @@ struct YouView: View {
                         }
                         .padding(.bottom, 36)
                         Text(m.shownName).font(.title2.bold())
-                        Text([m.jace_name.map { "@\($0)" }, m.minecraft_name.map { "⛏ \($0)" }, m.pronouns].compactMap { $0 }.joined(separator: " · "))
+                        Text([(m.handle ?? m.jace_name).map { "@\($0)" }, m.minecraft_name.map { "⛏ \($0)" }, m.pronouns].compactMap { $0 }.joined(separator: " · "))
                             .font(.footnote).foregroundStyle(JaceColor.muted)
                         let custom = [m.status_emoji, m.custom_status].compactMap { $0 }.joined(separator: " ")
                         if !custom.isEmpty { Text(custom) }

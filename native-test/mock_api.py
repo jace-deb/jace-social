@@ -23,7 +23,7 @@ def person(uuid, name, **extra):
     return {"uuid": uuid, "name": name, "online": True, "status": "online", "uses_jace": True, "activity": None,
             "custom_status": None, "status_emoji": None, "minecraft_name": name, "jace_name": None,
             "avatar_url": AVATAR.format(name), "bio": None, "pronouns": None, "accent_color": None, "links": [],
-            "unread": 0, **extra}
+            "unread": 0, "handle": name.lower(), **extra}
 
 
 PEOPLE = {

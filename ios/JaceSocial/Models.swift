@@ -40,6 +40,7 @@ struct Person: Codable, Hashable, Identifiable {
     var bot_owner: String?
     var nickname: String?
     var display_name: String?
+    var handle: String?
     var roles: [String]?
     var joined_at: String?
     var timeout_until: String?
@@ -93,6 +94,9 @@ struct Me: Codable {
     var links: [Link]?
     var minecraft_name: String?
     var jace_name: String?
+    var handle: String?
+    /// when the handle can change again (nil: now)
+    var handle_change_at: String?
     var minecraft_linked: Bool?
     var jace_linked: Bool?
     var inbox: String = ""
@@ -107,7 +111,7 @@ struct Me: Codable {
         Person(uuid: uuid, name: name, online: status != "invisible", status: status, custom_status: custom_status,
                status_emoji: status_emoji, minecraft_name: minecraft_name, jace_name: jace_name, avatar_url: avatar_url,
                banner_url: banner_url, bio: bio, pronouns: pronouns, accent_color: accent_color, links: links, is_bot: is_bot,
-               display_name: display_name)
+               display_name: display_name, handle: handle)
     }
 }
 
@@ -397,6 +401,7 @@ struct FullProfile: Codable {
     var is_bot: Bool?
     var bot_owner: String?
     var display_name: String?
+    var handle: String?
     var is_friend: Bool?
     var is_you: Bool?
     var mutual_servers: [MutualServer]?

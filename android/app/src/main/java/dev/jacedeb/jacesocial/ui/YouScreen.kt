@@ -55,7 +55,7 @@ fun YouScreen(session: Session, store: Store) {
                 Column(Modifier.padding(horizontal = 16.dp).offset(y = (-40).dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Avatar(m.asPerson(), 84)
                     Text(m.shownName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Muted(listOfNotNull(m.jace_name?.let { "@$it" }, m.minecraft_name?.let { "⛏ $it" }, m.pronouns).joinToString(" · "))
+                    Muted(listOfNotNull(m.handle?.let { "@$it" } ?: m.jace_name?.let { "@$it" }, m.minecraft_name?.let { "⛏ $it" }, m.pronouns).joinToString(" · "))
                     listOfNotNull(m.status_emoji, m.custom_status).joinToString(" ").takeIf { it.isNotBlank() }?.let { Text(it) }
                 }
             }

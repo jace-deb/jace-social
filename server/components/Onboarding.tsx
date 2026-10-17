@@ -73,7 +73,7 @@ export function Welcome({ me, onDone, onSaved, onError, onJoinServer }: {
         </>}
         {step === 2 && <>
           <h2>Find your friends</h2>
-          <p className="muted" style={{ margin: 0 }}>Type a friend's Minecraft or Jace username to send them a request. It works even if they haven't joined yet.</p>
+          <p className="muted" style={{ margin: 0 }}>Type a friend's @handle or Minecraft username to send them a request. It works even if they haven't joined yet.</p>
           <form style={{ display: "flex", gap: 8 }} onSubmit={async (e) => {
             e.preventDefault();
             if (!friend.trim()) return;
