@@ -1,5 +1,10 @@
 # Jace Social phone app changelog
 
+## 2.0.1
+- Handles: everyone has their own unique @handle. Change yours in You → My profile (once a week).
+- Add friends by their @handle.
+- Profiles show people's @handle.
+
 ## 2.0.0
 - Jace Social for phones is now a real app on both Android and iPhone, instead of the website in a frame: faster, smoother, and it looks like your phone.
 - Everything is in it: friends, messages (photos and files, reactions, replies, pins, @mentions, bot slash commands), group chats, servers with their channels, voice channels and settings, profiles, your status and settings, bots, and invite links.

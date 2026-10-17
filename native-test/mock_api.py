@@ -102,7 +102,7 @@ FIXTURES = {
     f"/servers/{SID}/bans": {"bans": []},
     "/calls/ice": {"ice_servers": [{"urls": "stun:stun.l.google.com:19302"}], "relay": False},
     # the same version as the test build, so no update prompt covers the screenshots
-    "/releases/mobile": {"version": "2.0.0", "notes": "", "page": "https://github.com/okjace/jace-social/releases", "downloads": []},
+    "/releases/mobile": {"version": "2.0.1", "notes": "", "page": "https://github.com/okjace/jace-social/releases", "downloads": []},
 }
 next_id = [100]
 
